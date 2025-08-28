@@ -11,9 +11,10 @@ interface PatientDetailProps {
 }
 
 export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument } = useData();
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -37,6 +38,19 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       console.error('Failed to generate summary:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextStatus = e.target.value as typeof patient.status;
+    if (nextStatus === patient.status) return;
+    try {
+      setIsUpdatingStatus(true);
+      await updatePatient(patientId, { status: nextStatus });
+    } catch (err) {
+      console.error('Failed to update status', err);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -102,16 +116,28 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 <p className="font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Status</p>
-                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                  patient.status === 'Active' 
-                    ? 'bg-green-100 text-green-800'
-                    : patient.status === 'Pending Discharge'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {patient.status}
-                </span>
+                <p className="text-sm text-gray-500 mb-1">Status</p>
+                <div className="flex items-center space-x-3">
+                  <select
+                    value={patient.status}
+                    onChange={handleStatusChange}
+                    disabled={isUpdatingStatus}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Pending Discharge">Pending</option>
+                    <option value="Discharged">Discharged</option>
+                  </select>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    patient.status === 'Active'
+                      ? 'bg-green-100 text-green-800'
+                      : patient.status === 'Pending Discharge'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {isUpdatingStatus ? 'Updating…' : patient.status}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
