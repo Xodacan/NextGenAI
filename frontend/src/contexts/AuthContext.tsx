@@ -1,16 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-
-interface User {
-  id: string;
-  fullName: string;
-  role: 'Doctor' | 'Nurse' | 'Admin';
-  email: string;
-}
+import { signInWithEmailPassword, signOut, onAuthStateChange, User } from '../firebase/auth';
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
@@ -21,34 +15,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate checking for existing session
-    const savedUser = localStorage.getItem('dischargeAI_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+    // Listen to Firebase auth state changes
+    const unsubscribe = onAuthStateChange((user) => {
+      setUser(user);
+      setIsLoading(false);
+    });
+
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // Simulate authentication - in real app, this would call an API
-    const mockUsers = [
-      { id: '1', fullName: 'Dr. Sarah Johnson', role: 'Doctor' as const, email: 'sarah.johnson@hospital.com' },
-      { id: '2', fullName: 'Nurse Mary Chen', role: 'Nurse' as const, email: 'mary.chen@hospital.com' },
-      { id: '3', fullName: 'Admin John Smith', role: 'Admin' as const, email: 'admin@hospital.com' }
-    ];
-
-    const foundUser = mockUsers.find(u => u.email === email);
-    if (foundUser && password === 'demo123') {
-      setUser(foundUser);
-      localStorage.setItem('dischargeAI_user', JSON.stringify(foundUser));
+    try {
+      const user = await signInWithEmailPassword(email, password);
+      setUser(user);
       return true;
+    } catch (error) {
+      console.error('Email/password login failed:', error);
+      return false;
     }
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('dischargeAI_user');
+  const logout = async () => {
+    try {
+      await signOut();
+      setUser(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
   };
 
   return (
