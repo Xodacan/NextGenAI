@@ -30,12 +30,15 @@ const convertFirebaseUser = (firebaseUser: FirebaseUser): User => {
 // Sign in with email and password
 export const signInWithEmailPassword = async (email: string, password: string): Promise<User> => {
   try {
+    console.log('Starting Firebase authentication...');
     const result = await signInWithEmailAndPassword(auth, email, password);
     const user = convertFirebaseUser(result.user);
     
+    console.log('Firebase authentication successful, getting ID token...');
     // Get the ID token
     const idToken = await result.user.getIdToken();
     
+    console.log('Sending token to Django backend for verification...');
     // Send token to Django backend for verification
     const response = await fetch('http://localhost:8000/api/auth/login/', {
       method: 'POST',
@@ -45,10 +48,14 @@ export const signInWithEmailPassword = async (email: string, password: string): 
       body: JSON.stringify({ idToken }),
     });
 
+    console.log('Backend response status:', response.status);
     if (!response.ok) {
+      const errorData = await response.json();
+      console.error('Backend authentication failed:', errorData);
       throw new Error('Backend authentication failed');
     }
 
+    console.log('Backend authentication successful');
     return user;
   } catch (error) {
     console.error('Email/password sign-in error:', error);

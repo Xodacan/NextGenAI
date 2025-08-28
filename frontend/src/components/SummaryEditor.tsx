@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Save, CheckCircle, Clock, Edit3 } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/MockAuthContext';
 
 interface SummaryEditorProps {
   summaryId: string;

@@ -1,0 +1,35 @@
+import React from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
+import SummaryEditor from '../components/SummaryEditor';
+
+export default function SummaryEditorPage() {
+  const { patientId, summaryId } = useParams<{ patientId: string; summaryId: string }>();
+  const navigate = useNavigate();
+
+  if (!patientId || !summaryId) {
+    return <div className="p-6">Summary not found</div>;
+  }
+
+  const handleBack = () => {
+    navigate(`/patients/${patientId}`);
+  };
+
+  return (
+    <div className="p-6">
+      <div className="mb-6">
+        <button
+          onClick={handleBack}
+          className="inline-flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Patient
+        </button>
+      </div>
+      <SummaryEditor 
+        summaryId={summaryId}
+        onBack={handleBack}
+      />
+    </div>
+  );
+} 
