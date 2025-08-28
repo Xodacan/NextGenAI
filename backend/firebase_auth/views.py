@@ -5,10 +5,17 @@ from rest_framework import status
 from .firebase_config import verify_firebase_token
 import json
 
-@api_view(['POST'])
+@api_view(['POST', 'GET'])
 @permission_classes([AllowAny])
 def firebase_login(request):
     """Handle Firebase authentication"""
+    
+    if request.method == 'GET':
+        return Response({
+            'message': 'This endpoint only accepts POST requests for authentication.',
+            'error': 'Use POST method with idToken in request body'
+        }, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    
     try:
         data = json.loads(request.body)
         id_token = data.get('idToken')
