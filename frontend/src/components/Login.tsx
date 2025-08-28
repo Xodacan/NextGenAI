@@ -32,10 +32,10 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 bg-blue-600 rounded-xl flex items-center justify-center">
-            <Activity className="h-8 w-8 text-white" />
+          <div className="mx-auto rounded-xl flex items-center justify-center">
+            <img src="../src/assets/OpenroomLogo.png" alt="OpenRoomAI"  />
           </div>
-          <h2 className="mt-6 text-3xl font-bold text-gray-900">DischargeAI</h2>
+
           <p className="mt-2 text-sm text-gray-600">
             Intelligent Healthcare Documentation Platform
           </p>
@@ -100,15 +100,7 @@ export default function Login() {
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
 
-            <div className="mt-4 p-4 bg-blue-50 rounded-lg">
-              <p className="text-xs font-medium text-blue-800 mb-2">Demo Credentials:</p>
-              <div className="space-y-1 text-xs text-blue-700">
-                <p>• Doctor: sarah.johnson@hospital.com</p>
-                <p>• Nurse: mary.chen@hospital.com</p>
-                <p>• Admin: admin@hospital.com</p>
-                <p className="mt-2 font-medium">Password: demo123</p>
-              </div>
-            </div>
+
           </form>
         </div>
       </div>
