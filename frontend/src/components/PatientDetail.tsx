@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentUploadModal from './DocumentUploadModal';
+import DocumentViewerModal from './DocumentViewerModal';
 
 interface PatientDetailProps {
   patientId: string;
@@ -15,6 +16,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -168,6 +170,12 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => setViewerDocIndex(index)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        View
+                      </button>
                       <p className="text-sm text-gray-500">
                         {new Date(doc.uploadTimestamp).toLocaleDateString()}
                       </p>
@@ -237,6 +245,12 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
         <DocumentUploadModal
           patientId={patientId}
           onClose={() => setShowUploadModal(false)}
+        />
+      )}
+      {viewerDocIndex !== null && (
+        <DocumentViewerModal
+          document={documents[viewerDocIndex]}
+          onClose={() => setViewerDocIndex(null)}
         />
       )}
     </div>
