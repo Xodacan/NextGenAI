@@ -63,11 +63,12 @@ export default function Dashboard() {
     <div className="p-6">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Welcome back, {(() => {
+          const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
           if (!user) return 'Doctor';
           if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
-          // Derive name from email before '@'
+          // Derive name from email before '@' and capitalize first letter
           const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
-          return nameFromEmail;
+          return capitalize(nameFromEmail);
         })()}!</h1>
         <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
       </div>
