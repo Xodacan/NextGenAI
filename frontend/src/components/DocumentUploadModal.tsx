@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Upload, FileText } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DocumentUploadModalProps {
   patientId: string;

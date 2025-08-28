@@ -1,5 +1,5 @@
 import React from 'react';
-import { AuthProvider } from './contexts/MockAuthContext';
+import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './routes/ProtectedRoute';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentUploadModal from './DocumentUploadModal';
 
@@ -11,7 +11,7 @@ interface PatientDetailProps {
 }
 
 export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary } = useData();
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
@@ -132,7 +132,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               </div>
             ) : (
               <div className="space-y-3">
-                {documents.map(doc => (
+                {documents.map((doc, index) => (
                   <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <FileText className="h-5 w-5 text-gray-400" />
@@ -141,9 +141,18 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                         <p className="text-sm text-gray-500">{doc.documentType}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {new Date(doc.uploadTimestamp).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center space-x-3">
+                      <p className="text-sm text-gray-500">
+                        {new Date(doc.uploadTimestamp).toLocaleDateString()}
+                      </p>
+                      <button
+                        onClick={() => deleteDocument(patientId, index)}
+                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Delete document"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
