@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogOut, Bell, Activity } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '../contexts/MockAuthContext';
 
 export default function Header() {
   const { user, logout } = useAuth();
