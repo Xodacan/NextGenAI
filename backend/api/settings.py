@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'core',
     'firebase_auth',
     'alibaba_cloud',
+    'openai_integration',
 ]
 
 MIDDLEWARE = [
@@ -149,3 +150,6 @@ REST_FRAMEWORK = {
         'firebase_auth.authentication.FirebaseAuthentication',
     ],
 }
+
+# OpenAI Configuration
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')

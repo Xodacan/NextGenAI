@@ -3,6 +3,7 @@ import { FileText, Eye, Download, Brain, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentViewerModal from './DocumentViewerModal';
 import { useAuth } from '../contexts/AuthContext';
+import { getIdToken } from '../firebase/auth';
 
 interface DocumentManagementProps {
   patientId: string | null;
@@ -42,17 +43,84 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
   const generateDocumentSummary = async (documentId: string) => {
     setIsGeneratingSummary(true);
     
-    // Simulate AI processing
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const mockSummary = `AI-Generated Summary: This clinical document contains key findings regarding patient care. Major points include diagnostic results, treatment recommendations, and clinical observations. The document shows [specific medical findings] with recommendations for [treatment approach]. Follow-up care includes [care instructions].`;
-    
-    setDocumentSummaries(prev => ({
-      ...prev,
-      [documentId]: mockSummary
-    }));
-    
-    setIsGeneratingSummary(false);
+    try {
+      const document = relevantDocuments.find(doc => doc.id === documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      // Get patient information for context
+      const patient = patients.find(p => p.id === document.patientId);
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
+
+      // Call OpenAI API through our backend
+      const response = await fetch('http://localhost:8000/api/openai/analyze-document/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getIdToken()}`,
+        },
+        body: JSON.stringify({
+          patient_id: document.patientId,
+          document_name: document.fileName,
+          document_type: document.documentType,
+          oss_path: `patients/${document.patientId}/${document.fileName}` // Assuming this is the OSS path
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze document');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Poll for completion
+        const pollInterval = setInterval(async () => {
+          const statusResponse = await fetch(`http://localhost:8000/api/openai/document-analysis/${data.analysis_id}/`, {
+            headers: {
+              'Authorization': `Bearer ${await getIdToken()}`,
+            },
+          });
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            
+            if (statusData.analysis.status === 'completed') {
+              clearInterval(pollInterval);
+              setDocumentSummaries(prev => ({
+                ...prev,
+                [documentId]: statusData.analysis.analysis_summary
+              }));
+              setIsGeneratingSummary(false);
+            } else if (statusData.analysis.status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error('Document analysis failed');
+            }
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Timeout after 60 seconds
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setIsGeneratingSummary(false);
+        }, 60000);
+      } else {
+        throw new Error(data.error || 'Failed to start analysis');
+      }
+
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      // Fallback to a basic summary if OpenAI fails
+      const fallbackSummary = `AI-Generated Summary: Unable to generate detailed summary at this time. Please review the document manually for key clinical findings and recommendations.`;
+      
+      setDocumentSummaries(prev => ({
+        ...prev,
+        [documentId]: fallbackSummary
+      }));
+    } finally {
+      setIsGeneratingSummary(false);
+    }
   };
 
   return (

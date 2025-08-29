@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Save, CheckCircle, Clock, Edit3 } from 'lucide-react';
+import { ArrowLeft, Save, CheckCircle, Clock, Edit3, RefreshCw } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
+import { getIdToken } from '../firebase/auth';
 
 interface SummaryEditorProps {
   summaryId: string;
@@ -9,10 +10,11 @@ interface SummaryEditorProps {
 }
 
 export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps) {
-  const { summaries, updateSummary, patients } = useData();
+  const { summaries, updateSummary, patients, refreshSummary } = useData();
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const summary = summaries.find(s => s.id === summaryId);
   const patient = summary ? patients.find(p => p.id === summary.patientId) : null;
@@ -52,6 +54,38 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
       approvedBy: user?.id,
       approvalTimestamp: new Date().toISOString()
     });
+  };
+
+  const handleRegenerate = async () => {
+    if (!summary) return;
+    
+    setIsRegenerating(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/openai/discharge-summary/${summary.id}/regenerate/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getIdToken()}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to regenerate summary');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Refresh the summary data
+        await refreshSummary(summary.id);
+        alert('Summary regenerated successfully!');
+      }
+    } catch (error) {
+      console.error('Failed to regenerate summary:', error);
+      alert('Failed to regenerate summary. Please try again.');
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   const getStatusIcon = () => {
@@ -112,6 +146,17 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
             >
               <Save className="h-4 w-4 mr-2" />
               Save Changes
+            </button>
+          )}
+          
+          {summary.status === 'Draft' && (
+            <button
+              onClick={handleRegenerate}
+              disabled={isRegenerating}
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${isRegenerating ? 'animate-spin' : ''}`} />
+              {isRegenerating ? 'Regenerating...' : 'Regenerate Summary'}
             </button>
           )}
           
