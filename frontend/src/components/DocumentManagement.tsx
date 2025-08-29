@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, Eye, Download, Brain, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
+import DocumentViewerModal from './DocumentViewerModal';
 
 interface DocumentManagementProps {
   patientId: string | null;
@@ -107,7 +108,10 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                         {new Date(document.uploadTimestamp).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900 inline-flex items-center">
+                        <button
+                          onClick={() => setSelectedDoc(document.id)}
+                          className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                        >
                           <Eye className="h-4 w-4 mr-1" />
                           View
                         </button>
@@ -146,6 +150,13 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
           </div>
         )}
       </div>
+
+      {selectedDoc && (
+        <DocumentViewerModal
+          document={relevantDocuments.find(d => d.id === selectedDoc)!}
+          onClose={() => setSelectedDoc(null)}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { getIdToken } from '../firebase/auth';
+import { useAuth } from './AuthContext';
 
 export interface Patient {
   id: string;
@@ -9,6 +11,7 @@ export interface Patient {
   occupantType: 'Room' | 'Bed' | 'ER Patient';
   occupantValue: string;
   status: 'Active' | 'Pending Discharge' | 'Discharged';
+  documents?: ClinicalDocument[]; // derived from backend JSON if needed
 }
 
 // Helper function to format occupant display
@@ -44,13 +47,15 @@ interface DataContextType {
   patients: Patient[];
   documents: ClinicalDocument[];
   summaries: DischargeSummary[];
-  addPatient: (patient: Omit<Patient, 'id'>) => void;
-  updatePatient: (id: string, updates: Partial<Patient>) => void;
-  addDocument: (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => void;
+  addPatient: (patient: Omit<Patient, 'id'>) => Promise<void>;
+  updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
+  addDocument: (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => Promise<void>;
+  deleteDocument: (patientId: string, docIndex: number) => Promise<void>;
   generateSummary: (patientId: string) => Promise<string>;
   updateSummary: (id: string, updates: Partial<DischargeSummary>) => void;
   getPatientDocuments: (patientId: string) => ClinicalDocument[];
   getPatientSummary: (patientId: string) => DischargeSummary | undefined;
+  refreshPatients: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -59,6 +64,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [documents, setDocuments] = useState<ClinicalDocument[]>([]);
   const [summaries, setSummaries] = useState<DischargeSummary[]>([]);
+  const { user } = useAuth();
 
   useEffect(() => {
     // Initialize with mock data
@@ -82,45 +88,190 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         occupantType: 'Bed',
         occupantValue: 'B-156',
         status: 'Pending Discharge'
+
+    // When auth user changes, refresh or clear data
+    const fetchPatients = async () => {
+      if (!user) {
+        setPatients([]);
+        setDocuments([]);
+        return;
       }
-    ]);
+      try {
+        const token = await getIdToken();
+        if (!token) return;
+        const res = await fetch('http://localhost:8000/api/patients/', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const mappedPatients: Patient[] = data.map((p: any) => ({
+            id: String(p.id),
+            firstName: p.first_name,
+            lastName: p.last_name,
+            dateOfBirth: p.date_of_birth,
+            admissionDate: p.admission_date,
+            roomNumber: p.room_number,
+            status: p.status,
+          }));
+          setPatients(mappedPatients);
 
-    setDocuments([
-      {
-        id: '1',
-        patientId: '1',
-        practitionerId: '1',
-        documentType: 'Admission Form',
-        fileName: 'admission_john_doe.pdf',
-        uploadTimestamp: '2024-01-15T10:30:00Z'
-      },
-      {
-        id: '2',
-        patientId: '1',
-        practitionerId: '1',
-        documentType: 'Lab Results',
-        fileName: 'lab_results_jan_16.pdf',
-        uploadTimestamp: '2024-01-16T14:15:00Z'
+          const allDocs: ClinicalDocument[] = [];
+          data.forEach((p: any) => {
+            const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
+            docs.forEach((d: any, idx: number) => {
+              allDocs.push({
+                id: `${p.id}-${idx + 1}`,
+                patientId: String(p.id),
+                practitionerId: d.practitionerId ?? '',
+                documentType: d.documentType ?? '',
+                fileName: d.fileName ?? '',
+                uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+                summary: d.summary,
+              });
+            });
+          });
+          setDocuments(allDocs);
+        }
+      } catch (e) {
+        console.error('Failed to load patients', e);
       }
-    ]);
-  }, []);
-
-  const addPatient = (patient: Omit<Patient, 'id'>) => {
-    const newPatient = { ...patient, id: Date.now().toString() };
-    setPatients(prev => [...prev, newPatient]);
-  };
-
-  const updatePatient = (id: string, updates: Partial<Patient>) => {
-    setPatients(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-  };
-
-  const addDocument = (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => {
-    const newDocument = {
-      ...document,
-      id: Date.now().toString(),
-      uploadTimestamp: new Date().toISOString()
     };
-    setDocuments(prev => [...prev, newDocument]);
+    fetchPatients();
+  }, [user]);
+
+  const addPatient = async (patient: Omit<Patient, 'id'>) => {
+    const token = await getIdToken();
+    if (!token) return;
+    const payload = {
+      first_name: patient.firstName,
+      last_name: patient.lastName,
+      date_of_birth: patient.dateOfBirth,
+      admission_date: patient.admissionDate,
+      room_number: patient.roomNumber,
+      status: patient.status,
+      documents: [],
+    };
+    const res = await fetch('http://localhost:8000/api/patients/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const p = await res.json();
+      const newPatient: Patient = {
+        id: String(p.id),
+        firstName: p.first_name,
+        lastName: p.last_name,
+        dateOfBirth: p.date_of_birth,
+        admissionDate: p.admission_date,
+        roomNumber: p.room_number,
+        status: p.status,
+      };
+      setPatients(prev => [...prev, newPatient]);
+    }
+  };
+
+  const updatePatient = async (id: string, updates: Partial<Patient>) => {
+    const token = await getIdToken();
+    if (!token) return;
+    const payload: any = {};
+    if (updates.firstName !== undefined) payload.first_name = updates.firstName;
+    if (updates.lastName !== undefined) payload.last_name = updates.lastName;
+    if (updates.dateOfBirth !== undefined) payload.date_of_birth = updates.dateOfBirth;
+    if (updates.admissionDate !== undefined) payload.admission_date = updates.admissionDate;
+    if (updates.roomNumber !== undefined) payload.room_number = updates.roomNumber;
+    if (updates.status !== undefined) payload.status = updates.status;
+    const res = await fetch(`http://localhost:8000/api/patients/${id}/`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const p = await res.json();
+      setPatients(prev => prev.map(item => item.id === id ? {
+        id: String(p.id),
+        firstName: p.first_name,
+        lastName: p.last_name,
+        dateOfBirth: p.date_of_birth,
+        admissionDate: p.admission_date,
+        roomNumber: p.room_number,
+        status: p.status,
+      } : item));
+    }
+  };
+
+  const addDocument = async (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => {
+    const token = await getIdToken();
+    if (!token) return;
+    const payload = {
+      documentType: document.documentType,
+      fileName: document.fileName,
+      practitionerId: document.practitionerId,
+      uploadTimestamp: new Date().toISOString(),
+    };
+    const res = await fetch(`http://localhost:8000/api/patients/${document.patientId}/documents/`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const docs = data.documents as any[];
+      // Project into ClinicalDocument for this patient
+      const projected: ClinicalDocument[] = docs.map((d: any, idx: number) => ({
+        id: String(idx + 1),
+        patientId: document.patientId,
+        practitionerId: d.practitionerId ?? '',
+        documentType: d.documentType ?? '',
+        fileName: d.fileName ?? '',
+        uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+        summary: d.summary,
+      }));
+      setDocuments(prev => {
+        const filtered = prev.filter(d => d.patientId !== document.patientId);
+        return [...filtered, ...projected];
+      });
+    }
+  };
+
+  const deleteDocument = async (patientId: string, docIndex: number) => {
+    const token = await getIdToken();
+    if (!token) return;
+    const res = await fetch(`http://localhost:8000/api/patients/${patientId}/documents/${docIndex}/`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const docs = data.documents as any[];
+      const projected: ClinicalDocument[] = docs.map((d: any, idx: number) => ({
+        id: `${patientId}-${idx + 1}`,
+        patientId,
+        practitionerId: d.practitionerId ?? '',
+        documentType: d.documentType ?? '',
+        fileName: d.fileName ?? '',
+        uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+        summary: d.summary,
+      }));
+      setDocuments(prev => {
+        const filtered = prev.filter(d => d.patientId !== patientId);
+        return [...filtered, ...projected];
+      });
+    }
   };
 
   const generateSummary = async (patientId: string): Promise<string> => {
@@ -177,6 +328,52 @@ This summary was generated by DischargeAI and requires clinical review and appro
     return summaries.find(s => s.patientId === patientId);
   };
 
+  const refreshPatients = async () => {
+    if (!user) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      const res = await fetch('http://localhost:8000/api/patients/', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mappedPatients: Patient[] = data.map((p: any) => ({
+          id: String(p.id),
+          firstName: p.first_name,
+          lastName: p.last_name,
+          dateOfBirth: p.date_of_birth,
+          admissionDate: p.admission_date,
+          roomNumber: p.room_number,
+          status: p.status,
+        }));
+        setPatients(mappedPatients);
+
+        const allDocs: ClinicalDocument[] = [];
+        data.forEach((p: any) => {
+          const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
+          docs.forEach((d: any, idx: number) => {
+            allDocs.push({
+              id: `${p.id}-${idx + 1}`,
+              patientId: String(p.id),
+              practitionerId: d.practitionerId ?? '',
+              documentType: d.documentType ?? '',
+              fileName: d.fileName ?? '',
+              uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+              summary: d.summary,
+            });
+          });
+        });
+        setDocuments(allDocs);
+      }
+    } catch (e) {
+      console.error('Failed to refresh patients', e);
+    }
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
@@ -185,10 +382,12 @@ This summary was generated by DischargeAI and requires clinical review and appro
       addPatient,
       updatePatient,
       addDocument,
+      deleteDocument,
       generateSummary,
       updateSummary,
       getPatientDocuments,
-      getPatientSummary
+      getPatientSummary,
+      refreshPatients
     }}>
       {children}
     </DataContext.Provider>
