@@ -64,17 +64,19 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
     setIsLoading(true);
 
     try {
-      // Upload each file to the backend
+      // Upload each file to Alibaba Cloud OSS
       for (const file of selectedFiles) {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('documentType', documentType);
-        formData.append('fileName', file.name);
-        formData.append('practitionerId', user!.id);
-        formData.append('uploadTimestamp', new Date().toISOString());
+        formData.append('patient_id', patientId);
+        formData.append('document_type', documentType);
 
         const token = await getIdToken();
-        const response = await fetch(`http://localhost:8000/api/patients/${patientId}/documents/`, {
+        console.log('Got token:', token ? 'Token exists' : 'No token');
+        console.log('User:', user);
+        
+        // Upload to Alibaba Cloud OSS
+        const ossResponse = await fetch(`http://localhost:8000/api/alibaba/upload/`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -82,8 +84,46 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
           body: formData,
         });
 
-        if (!response.ok) {
-          throw new Error(`Failed to upload ${file.name}`);
+        console.log('OSS Response status:', ossResponse.status);
+        console.log('OSS Response headers:', Object.fromEntries(ossResponse.headers.entries()));
+
+        if (!ossResponse.ok) {
+          const errorText = await ossResponse.text();
+          console.error('OSS Response error:', errorText);
+          throw new Error(`Failed to upload ${file.name} to Alibaba Cloud OSS: ${ossResponse.status} ${errorText}`);
+        }
+
+        const ossResult = await ossResponse.json();
+        console.log('OSS Result:', ossResult);
+
+        // Now add the document entry to the patient's documents list
+        const documentEntry = {
+          documentType: documentType,
+          fileName: file.name,
+          practitionerId: user!.id,
+          uploadTimestamp: new Date().toISOString(),
+          url: ossResult.presigned_url, // Use the OSS URL
+          oss_path: ossResult.oss_path, // Store the OSS path for future reference
+          file_size: file.size,
+          document_type: documentType
+        };
+
+        // Add to patient's documents list
+        const patientDocResponse = await fetch(`http://localhost:8000/api/patients/${patientId}/documents/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            document: documentEntry
+          }),
+        });
+
+        if (!patientDocResponse.ok) {
+          const errorText = await patientDocResponse.text();
+          console.error('Patient doc response error:', errorText);
+          throw new Error(`Failed to add document entry for ${file.name}: ${patientDocResponse.status} ${errorText}`);
         }
       }
 

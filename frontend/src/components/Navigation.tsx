@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Navigation() {
   const location = useLocation();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
@@ -26,6 +26,21 @@ export default function Navigation() {
       <div className="mb-8">
         <img src="../src/assets/OpenroomLogo.png" alt="OpenRoomAI" className="h-8" />
         <p className="text-sm text-gray-600">Healthcare Management</p>
+        
+                 {/* Welcome Message */}
+         <div className="mt-6 pt-4 border-t border-gray-100">
+           <p className="text-sm text-gray-600">
+             Welcome back, {(() => {
+               if (!user) return 'Doctor';
+               // Use displayName from backend if available, fall back to fullName, then email
+               if (user.displayName) return user.displayName;
+               if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
+               // Derive name from email before '@' and capitalize first letter
+               const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
+               return nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1);
+             })()}!
+           </p>
+         </div>
       </div>
       
       <nav className="space-y-2 mb-8">

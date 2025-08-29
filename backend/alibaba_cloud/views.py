@@ -10,14 +10,35 @@ from .services.function_compute_service import AlibabaFunctionComputeService
 from .services.simple_app_server_service import AlibabaSimpleAppServerService
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def test_auth(request):
+    """Test endpoint to verify authentication is working"""
+    return Response({
+        'message': 'Authentication successful!',
+        'user_id': request.user.firebase_uid,
+        'user_email': request.user.email
+    }, status=status.HTTP_200_OK)
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_document(request):
     """Upload a medical document to Alibaba Cloud OSS"""
     try:
+        # Debug: Print request information
+        print(f"Upload request received from user: {request.user}")
+        print(f"Request headers: {dict(request.headers)}")
+        print(f"Request data keys: {list(request.data.keys())}")
+        print(f"Request FILES keys: {list(request.FILES.keys())}")
+        
         file = request.FILES.get('file')
         patient_id = request.data.get('patient_id')
         document_type = request.data.get('document_type', 'General')
+        
+        print(f"File: {file}")
+        print(f"Patient ID: {patient_id}")
+        print(f"Document type: {document_type}")
         
         if not file or not patient_id:
             return Response({
@@ -26,23 +47,27 @@ def upload_document(request):
         
         # Get doctor ID from authenticated user
         doctor_id = request.user.firebase_uid
+        print(f"Doctor ID: {doctor_id}")
         
         # Read file content
         file_content = file.read()
+        print(f"File size: {len(file_content)} bytes")
         
-        # Upload to OSS
+        # Upload to OSS using patient's Django ID
         oss_service = AlibabaOSSService()
         result = oss_service.upload_medical_document(
             file_content=file_content,
             file_name=file.name,
             doctor_id=doctor_id,
-            patient_id=patient_id,
+            patient_id=patient_id,  # Use patient's Django ID
             document_type=document_type
         )
         
+        print(f"OSS upload result: {result}")
         return Response(result, status=status.HTTP_201_CREATED)
         
     except Exception as e:
+        print(f"Upload error: {str(e)}")
         return Response({
             'error': f'Upload failed: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 
 export interface Patient {
   id: string;
+  doctor_firebase_uid?: string;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -94,24 +95,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // When auth user changes, refresh or clear data
     const fetchPatients = async () => {
       if (!user) {
-        setPatients([]);
-        setDocuments([]);
+        console.log('No user, skipping fetchPatients');
         return;
       }
       
       try {
         const token = await getIdToken();
-        if (!token) return;
+        console.log('DataContext - Got token:', token ? 'Token exists' : 'No token');
+        console.log('DataContext - User:', user);
+        
+        if (!token) {
+          console.log('No token available, cannot fetch patients');
+          return;
+        }
+        
         const res = await fetch('http://localhost:8000/api/patients/', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
+        
+        console.log('DataContext - Response status:', res.status);
+        console.log('DataContext - Response headers:', Object.fromEntries(res.headers.entries()));
+        
         if (res.ok) {
           const data = await res.json();
+          console.log('DataContext - Patients data:', data);
           const mappedPatients: Patient[] = data.map((p: any) => ({
             id: String(p.id),
+            doctor_firebase_uid: p.doctor_firebase_uid,
             firstName: p.first_name,
             lastName: p.last_name,
             dateOfBirth: p.date_of_birth,
@@ -138,9 +151,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             });
           });
           setDocuments(allDocs);
+        } else {
+          const errorText = await res.text();
+          console.error('DataContext - Failed to fetch patients:', res.status, errorText);
         }
       } catch (e) {
-        console.error('Failed to load patients', e);
+        console.error('DataContext - Exception fetching patients:', e);
       }
     };
     fetchPatients();
@@ -149,7 +165,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addPatient = async (patient: Omit<Patient, 'id'>) => {
     const token = await getIdToken();
     if (!token) return;
+    
     const payload = {
+      doctor_firebase_uid: user!.id, // Use the logged-in doctor's Firebase UID
       first_name: patient.firstName,
       last_name: patient.lastName,
       date_of_birth: patient.dateOfBirth,
@@ -171,6 +189,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const p = await res.json();
       const newPatient: Patient = {
         id: String(p.id),
+        doctor_firebase_uid: p.doctor_firebase_uid,
         firstName: p.first_name,
         lastName: p.last_name,
         dateOfBirth: p.date_of_birth,

@@ -10,6 +10,7 @@ import { auth } from './config';
 export interface User {
   id: string;
   fullName: string;
+  displayName?: string; // Backend display_name field
   role: 'Doctor' | 'Nurse' | 'Admin';
   email: string;
   picture?: string;
