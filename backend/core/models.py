@@ -25,11 +25,15 @@ class Patient(models.Model):
     """Patient records scoped to a single doctor."""
     doctor = models.ForeignKey(Doctor, on_delete=models.CASCADE, related_name='patients')
 
+    # Doctor's Firebase UID (links patient to the doctor who created them)
+    doctor_firebase_uid = models.CharField(max_length=128, null=True, blank=True, help_text="Firebase UID of the doctor who owns this patient")
+    
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     admission_date = models.DateField()
-    room_number = models.CharField(max_length=50)
+    occupant_type = models.CharField(max_length=50, default='Room', help_text="Type of occupant (Room, Bed, etc.)")
+    occupant_value = models.CharField(max_length=50, blank=True, help_text="Value of occupant (Room number, Bed number, etc.)")
     status = models.CharField(
         max_length=32,
         choices=(

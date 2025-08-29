@@ -10,6 +10,6 @@ class DoctorAdmin(admin.ModelAdmin):
 
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display = ("first_name", "last_name", "doctor", "status", "room_number", "admission_date")
-    list_filter = ("status", "doctor")
-    search_fields = ("first_name", "last_name", "room_number")
+    list_display = ("first_name", "last_name", "doctor", "doctor_firebase_uid", "status", "occupant_type", "occupant_value", "admission_date")
+    list_filter = ("status", "doctor", "occupant_type")
+    search_fields = ("first_name", "last_name", "occupant_value", "doctor_firebase_uid")

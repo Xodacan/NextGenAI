@@ -4,6 +4,7 @@ import { useAuth } from './AuthContext';
 
 export interface Patient {
   id: string;
+  doctor_firebase_uid?: string;
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -55,6 +56,7 @@ interface DataContextType {
   updateSummary: (id: string, updates: Partial<DischargeSummary>) => void;
   getPatientDocuments: (patientId: string) => ClinicalDocument[];
   getPatientSummary: (patientId: string) => DischargeSummary | undefined;
+  refreshSummary: (summaryId: string) => Promise<void>;
   refreshPatients: () => Promise<void>;
 }
 
@@ -94,24 +96,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // When auth user changes, refresh or clear data
     const fetchPatients = async () => {
       if (!user) {
-        setPatients([]);
-        setDocuments([]);
+        console.log('No user, skipping fetchPatients');
         return;
       }
       
       try {
         const token = await getIdToken();
-        if (!token) return;
+        console.log('DataContext - Got token:', token ? 'Token exists' : 'No token');
+        console.log('DataContext - User:', user);
+        
+        if (!token) {
+          console.log('No token available, cannot fetch patients');
+          return;
+        }
+        
         const res = await fetch('http://localhost:8000/api/patients/', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
+        
+        console.log('DataContext - Response status:', res.status);
+        console.log('DataContext - Response headers:', Object.fromEntries(res.headers.entries()));
+        
         if (res.ok) {
           const data = await res.json();
+          console.log('DataContext - Patients data:', data);
           const mappedPatients: Patient[] = data.map((p: any) => ({
             id: String(p.id),
+            doctor_firebase_uid: p.doctor_firebase_uid,
             firstName: p.first_name,
             lastName: p.last_name,
             dateOfBirth: p.date_of_birth,
@@ -138,9 +152,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             });
           });
           setDocuments(allDocs);
+        } else {
+          const errorText = await res.text();
+          console.error('DataContext - Failed to fetch patients:', res.status, errorText);
         }
       } catch (e) {
-        console.error('Failed to load patients', e);
+        console.error('DataContext - Exception fetching patients:', e);
       }
     };
     fetchPatients();
@@ -149,7 +166,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const addPatient = async (patient: Omit<Patient, 'id'>) => {
     const token = await getIdToken();
     if (!token) return;
+    
     const payload = {
+      doctor_firebase_uid: user!.id, // Use the logged-in doctor's Firebase UID
       first_name: patient.firstName,
       last_name: patient.lastName,
       date_of_birth: patient.dateOfBirth,
@@ -171,6 +190,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const p = await res.json();
       const newPatient: Patient = {
         id: String(p.id),
+        doctor_firebase_uid: p.doctor_firebase_uid,
         firstName: p.first_name,
         lastName: p.last_name,
         dateOfBirth: p.date_of_birth,
@@ -283,45 +303,72 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const generateSummary = async (patientId: string): Promise<string> => {
-    // Simulate AI processing delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!user) throw new Error('User not authenticated');
     
-    const patient = patients.find(p => p.id === patientId);
+    const token = await getIdToken();
+    if (!token) throw new Error('No authentication token');
+    
+    // Get document analyses for this patient
     const patientDocs = documents.filter(d => d.patientId === patientId);
+    if (patientDocs.length === 0) {
+      throw new Error('No documents found for this patient. Please upload documents first.');
+    }
     
-    // Simulate AI-generated content
-    const aiContent = `DISCHARGE SUMMARY
+    try {
+      const response = await fetch('http://localhost:8000/api/openai/generate-discharge-summary/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          patient_id: patientId
+          // analysis_ids will be handled by the backend for testing
+        }),
+      });
 
-Patient: ${patient?.firstName} ${patient?.lastName}
-DOB: ${patient?.dateOfBirth}
-Admission Date: ${patient?.admissionDate}
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate summary');
+      }
 
-CLINICAL SUMMARY:
-Based on analysis of ${patientDocs.length} clinical documents, the patient presented with [AI-analyzed condition]. Treatment included [AI-extracted treatments]. Patient showed good response to therapy with stable vital signs.
-
-MEDICATIONS:
-- [AI-extracted medications from documents]
-- Discharge prescriptions as per clinical notes
-
-FOLLOW-UP:
-- Primary care follow-up in 1 week
-- Specialist consultation as indicated
-- Return if symptoms worsen
-
-CONDITION AT DISCHARGE: Stable, improved from admission
-
-This summary was generated by DischargeAI and requires clinical review and approval.`;
-
-    const newSummary: DischargeSummary = {
-      id: Date.now().toString(),
-      patientId,
-      status: 'Draft',
-      generatedContent: aiContent,
-      createdTimestamp: new Date().toISOString()
-    };
-
-    setSummaries(prev => [...prev, newSummary]);
-    return newSummary.id;
+      const data = await response.json();
+      
+      if (data.success) {
+        // Fetch the generated summary to get its details
+        const summaryResponse = await fetch(`http://localhost:8000/api/openai/discharge-summary/${data.discharge_summary_id}/`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (summaryResponse.ok) {
+          const summaryData = await summaryResponse.json();
+          if (summaryData.success && summaryData.discharge_summary) {
+            const summary = summaryData.discharge_summary;
+            const newSummary: DischargeSummary = {
+              id: String(summary.id),
+              patientId: String(summary.patient_id || patientId),
+              status: summary.status || 'Draft',
+              generatedContent: summary.formatted_summary || '',
+              finalContent: summary.formatted_summary || '',
+              createdTimestamp: summary.created_at || new Date().toISOString(),
+              approvalTimestamp: summary.finalized_at,
+              approvedBy: summary.approved_by
+            };
+            
+            setSummaries(prev => [...prev, newSummary]);
+            return newSummary.id;
+          }
+        }
+      }
+      
+      throw new Error('Failed to generate summary');
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      throw error;
+    }
   };
 
   const updateSummary = (id: string, updates: Partial<DischargeSummary>) => {
@@ -334,6 +381,42 @@ This summary was generated by DischargeAI and requires clinical review and appro
 
   const getPatientSummary = (patientId: string) => {
     return summaries.find(s => s.patientId === patientId);
+  };
+
+  const refreshSummary = async (summaryId: string) => {
+    if (!user) return;
+    try {
+      const token = await getIdToken();
+      if (!token) return;
+      
+      const res = await fetch(`http://localhost:8000/api/openai/discharge-summary/${summaryId}/`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.discharge_summary) {
+          const summary = data.discharge_summary;
+          const updatedSummary: DischargeSummary = {
+            id: String(summary.id),
+            patientId: String(summary.patient_id || summary.patientId),
+            status: summary.status || 'Draft',
+            generatedContent: summary.formatted_summary || summary.generatedContent,
+            finalContent: summary.formatted_summary || summary.finalContent,
+            createdTimestamp: summary.created_at || summary.createdTimestamp,
+            approvalTimestamp: summary.finalized_at || summary.approvalTimestamp,
+            approvedBy: summary.approved_by || summary.approvedBy
+          };
+          
+          setSummaries(prev => prev.map(s => s.id === summaryId ? updatedSummary : s));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to refresh summary', e);
+    }
   };
 
   const refreshPatients = async () => {
@@ -396,6 +479,7 @@ This summary was generated by DischargeAI and requires clinical review and appro
       updateSummary,
       getPatientDocuments,
       getPatientSummary,
+      refreshSummary,
       refreshPatients
     }}>
       {children}

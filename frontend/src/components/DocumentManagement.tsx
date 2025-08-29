@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Eye, Download, Brain, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentViewerModal from './DocumentViewerModal';
+import { useAuth } from '../contexts/AuthContext';
+import { getIdToken } from '../firebase/auth';
 
 interface DocumentManagementProps {
   patientId: string | null;
 }
 
 export default function DocumentManagement({ patientId }: DocumentManagementProps) {
-  const { documents, getPatientDocuments } = useData();
+  const { documents, getPatientDocuments, patients } = useData();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -21,20 +24,103 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
         doc.documentType.toLowerCase().includes(searchTerm.toLowerCase())
       );
 
+  // Helper function to get patient name
+  const getPatientName = (patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    return patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
+  };
+
+  // Helper function to get treating doctor name
+  const getTreatingDoctorName = (practitionerId: string) => {
+    // For now, assume the practitionerId refers to the current doctor
+    // In a real implementation, you might have a separate doctors/users table
+    if (practitionerId === user?.id) {
+      return user.displayName || user.fullName || 'Current Doctor';
+    }
+    return practitionerId || 'Unknown Doctor';
+  };
+
   const generateDocumentSummary = async (documentId: string) => {
     setIsGeneratingSummary(true);
     
-    // Simulate AI processing
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const mockSummary = `AI-Generated Summary: This clinical document contains key findings regarding patient care. Major points include diagnostic results, treatment recommendations, and clinical observations. The document shows [specific medical findings] with recommendations for [treatment approach]. Follow-up care includes [care instructions].`;
-    
-    setDocumentSummaries(prev => ({
-      ...prev,
-      [documentId]: mockSummary
-    }));
-    
-    setIsGeneratingSummary(false);
+    try {
+      const document = relevantDocuments.find(doc => doc.id === documentId);
+      if (!document) {
+        throw new Error('Document not found');
+      }
+
+      // Get patient information for context
+      const patient = patients.find(p => p.id === document.patientId);
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
+
+      // Call OpenAI API through our backend
+      const response = await fetch('http://localhost:8000/api/openai/analyze-document/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await getIdToken()}`,
+        },
+        body: JSON.stringify({
+          patient_id: document.patientId,
+          document_name: document.fileName,
+          document_type: document.documentType,
+          oss_path: `patients/${document.patientId}/${document.fileName}` // Assuming this is the OSS path
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze document');
+      }
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Poll for completion
+        const pollInterval = setInterval(async () => {
+          const statusResponse = await fetch(`http://localhost:8000/api/openai/document-analysis/${data.analysis_id}/`, {
+            headers: {
+              'Authorization': `Bearer ${await getIdToken()}`,
+            },
+          });
+          
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json();
+            
+            if (statusData.analysis.status === 'completed') {
+              clearInterval(pollInterval);
+              setDocumentSummaries(prev => ({
+                ...prev,
+                [documentId]: statusData.analysis.analysis_summary
+              }));
+              setIsGeneratingSummary(false);
+            } else if (statusData.analysis.status === 'failed') {
+              clearInterval(pollInterval);
+              throw new Error('Document analysis failed');
+            }
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Timeout after 60 seconds
+        setTimeout(() => {
+          clearInterval(pollInterval);
+          setIsGeneratingSummary(false);
+        }, 60000);
+      } else {
+        throw new Error(data.error || 'Failed to start analysis');
+      }
+
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      // Fallback to a basic summary if OpenAI fails
+      const fallbackSummary = `AI-Generated Summary: Unable to generate detailed summary at this time. Please review the document manually for key clinical findings and recommendations.`;
+      
+      setDocumentSummaries(prev => ({
+        ...prev,
+        [documentId]: fallbackSummary
+      }));
+    } finally {
+      setIsGeneratingSummary(false);
+    }
   };
 
   return (
@@ -74,6 +160,14 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Type
                   </th>
+                  {!patientId && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Patient Name
+                    </th>
+                  )}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Treating Doctor
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Upload Date
                   </th>
@@ -103,6 +197,14 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                           {document.documentType}
                         </span>
+                      </td>
+                      {!patientId && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {getPatientName(document.patientId)}
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {getTreatingDoctorName(document.practitionerId)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(document.uploadTimestamp).toLocaleDateString()}
@@ -135,7 +237,7 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                     </tr>
                     {documentSummaries[document.id] && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-4 bg-purple-50 border-l-4 border-purple-200">
+                        <td colSpan={patientId ? 5 : 6} className="px-6 py-4 bg-purple-50 border-l-4 border-purple-200">
                           <div className="text-sm text-gray-700">
                             <h4 className="font-medium text-purple-800 mb-2">AI-Generated Summary:</h4>
                             <p>{documentSummaries[document.id]}</p>
