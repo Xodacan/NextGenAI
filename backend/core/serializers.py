@@ -21,11 +21,13 @@ class PatientSerializer(serializers.ModelSerializer):
         model = Patient
         fields = [
             'id',
+            'doctor_firebase_uid',
             'first_name',
             'last_name',
             'date_of_birth',
             'admission_date',
-            'room_number',
+            'occupant_type',
+            'occupant_value',
             'status',
             'documents',
             'created_at',

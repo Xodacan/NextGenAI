@@ -214,7 +214,7 @@ class AlibabaFunctionComputeService:
                     'success': True,
                     'document_url': result.get('document_url', ''),
                     'document_id': result.get('document_id', ''),
-                    'assessment": result.get('assessment', ''),
+                    'assessment': result.get('assessment', ''),
                     'treatment_plan': result.get('treatment_plan', ''),
                     'follow_up_date': result.get('follow_up_date', '')
                 }

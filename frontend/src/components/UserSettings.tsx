@@ -16,7 +16,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   // Form states
   const [profileData, setProfileData] = useState({
-    displayName: user?.fullName || '',
+    displayName: user?.displayName || user?.fullName || '',
     institution: ''
   });
 
@@ -26,14 +26,14 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
       try {
         const profile = await getUserProfile();
         setProfileData({
-          displayName: profile.display_name || user?.fullName || '',
+          displayName: profile.display_name || user?.displayName || user?.fullName || '',
           institution: profile.institution || ''
         });
       } catch (error) {
         console.error('Failed to load profile:', error);
         // Fallback to user data from auth context
         setProfileData({
-          displayName: user?.fullName || '',
+          displayName: user?.displayName || user?.fullName || '',
           institution: ''
         });
       }

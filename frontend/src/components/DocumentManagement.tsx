@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileText, Eye, Download, Brain, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentViewerModal from './DocumentViewerModal';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DocumentManagementProps {
   patientId: string | null;
 }
 
 export default function DocumentManagement({ patientId }: DocumentManagementProps) {
-  const { documents, getPatientDocuments } = useData();
+  const { documents, getPatientDocuments, patients } = useData();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -20,6 +22,22 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
         doc.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.documentType.toLowerCase().includes(searchTerm.toLowerCase())
       );
+
+  // Helper function to get patient name
+  const getPatientName = (patientId: string) => {
+    const patient = patients.find(p => p.id === patientId);
+    return patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
+  };
+
+  // Helper function to get treating doctor name
+  const getTreatingDoctorName = (practitionerId: string) => {
+    // For now, assume the practitionerId refers to the current doctor
+    // In a real implementation, you might have a separate doctors/users table
+    if (practitionerId === user?.id) {
+      return user.displayName || user.fullName || 'Current Doctor';
+    }
+    return practitionerId || 'Unknown Doctor';
+  };
 
   const generateDocumentSummary = async (documentId: string) => {
     setIsGeneratingSummary(true);
@@ -74,6 +92,14 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Type
                   </th>
+                  {!patientId && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Patient Name
+                    </th>
+                  )}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Treating Doctor
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Upload Date
                   </th>
@@ -103,6 +129,14 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                         <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
                           {document.documentType}
                         </span>
+                      </td>
+                      {!patientId && (
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {getPatientName(document.patientId)}
+                        </td>
+                      )}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {getTreatingDoctorName(document.practitionerId)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(document.uploadTimestamp).toLocaleDateString()}
@@ -135,7 +169,7 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
                     </tr>
                     {documentSummaries[document.id] && (
                       <tr>
-                        <td colSpan={4} className="px-6 py-4 bg-purple-50 border-l-4 border-purple-200">
+                        <td colSpan={patientId ? 5 : 6} className="px-6 py-4 bg-purple-50 border-l-4 border-purple-200">
                           <div className="text-sm text-gray-700">
                             <h4 className="font-medium text-purple-800 mb-2">AI-Generated Summary:</h4>
                             <p>{documentSummaries[document.id]}</p>

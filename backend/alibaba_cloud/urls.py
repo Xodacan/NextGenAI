@@ -4,6 +4,9 @@ from . import views
 app_name = 'alibaba_cloud'
 
 urlpatterns = [
+    # Test endpoint
+    path('test-auth/', views.test_auth, name='test_auth'),
+    
     # OSS - File Storage
     path('upload/', views.upload_document, name='upload_document'),
     path('documents/<str:patient_id>/', views.list_patient_documents, name='list_patient_documents'),
