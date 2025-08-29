@@ -8,6 +8,7 @@ class Doctor(models.Model):
     # Optional metadata
     email = models.EmailField(blank=True, null=True)
     display_name = models.CharField(max_length=255, blank=True, null=True)
+    institution = models.CharField(max_length=255, blank=True, null=True, help_text="Medical institution where the doctor works")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

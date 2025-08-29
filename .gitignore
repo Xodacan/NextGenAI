@@ -26,3 +26,6 @@ dist-ssr
 
 # Firebase
 firebase-service-account.json
+
+# Development scripts
+show_doctors.py
