@@ -1,0 +1,39 @@
+ Discharge Summary Edited Version
+
+Patient Name: Emily
+Date of Birth: 
+Age: Not Documented
+Admission Date: 27-Aug-2025
+Discharge Date: 29-Aug-2025
+
+Hospital Course
+----------------
+The patient, Emily, was admitted to our hospital on 27-Aug-2025 due to respiratory distress and a positive viral panel for Rhinovirus. Overnight, the patient received nebulized salbutamol and ipratropium bromide, oral prednisolone, and high-flow oxygen therapy as needed. The patient's condition improved, and by morning, the SpO2 was 99% RA with a respiratory rate of 20.
+
+Clinical Findings
+------------------
+On admission, the patient presented with mild wheeze bilaterally, good air entry, and an SpO2 of 97% RA on 2 L O₂. The patient was irritable but consolable in the mother's lap. Vitals: T 37.2 °C, HR 152, RR 38, BP 92/56. The patient had eczema on flexures and no rashes.
+
+Treatment and Management
+-------------------------
+The patient received nebulized salbutamol and ipratropium bromide every 2 hours, oral prednisolone 20 mg, and high-flow oxygen therapy as needed. The patient was also educated on the correct use of MDI spacer and the difference between preventer and reliever medications. A written asthma action plan was completed, and a school copy was prepared.
+
+Social Work Intervention
+-------------------------
+The social worker, J. Holmes, provided information on Carer's allowance and reassured the family regarding hospital no-cost public care. The school was notified to expect the child the following day if discharged. The family lives 15 minutes from the hospital, and the father works FIFO.
+
+Dietary Intervention
+---------------------
+The dietician, L. Fernando, found that the patient's intake was normal with no weight loss. Advice was given to continue a balanced diet and offer small frequent meals if the patient experiences wheeziness post-neb. No specific restrictions were necessary.
+
+Physiotherapy Intervention
+--------------------------
+The physiotherapist, S. Nguyen, assessed the patient with no sputum production and a dry cough. Air entry was symmetrical. The intervention included teaching bubble PEP for 5 breaths to maintain airway patency and advised no formal chest PT was required.
+
+Final Assessment and Plan
+--------------------------
+On Day 2 of the hospital course, Emily slept 6 hours straight without any wheeze heard, SpO2 96-98% RA overnight. The patient's respiratory rate was 22-26 with occasional cough. A chest X-ray was taken to exclude pneumonia/complications (results pending). The final plan included a change to salbutamol MDI + spacer 2 puffs q4h, the final prednisolone dose, and final teaching & observation today. Likely discharge this afternoon if stable.
+
+Follow-up Arrangements
+----------------------
+The patient will have a follow-up appointment with their general practitioner within 48 hours of discharge. A referral to the Paediatric Respiratory Clinic for a review in 4 weeks was also arranged. The mother is comfortable escalating care per the action plan provided.

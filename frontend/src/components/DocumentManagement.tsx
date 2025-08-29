@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Eye, Download, Brain, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
 import DocumentViewerModal from './DocumentViewerModal';
@@ -7,15 +7,17 @@ import { getIdToken } from '../firebase/auth';
 
 interface DocumentManagementProps {
   patientId: string | null;
+  highlightSummaryId?: string;
 }
 
-export default function DocumentManagement({ patientId }: DocumentManagementProps) {
-  const { documents, getPatientDocuments, patients } = useData();
+export default function DocumentManagement({ patientId, highlightSummaryId }: DocumentManagementProps) {
+  const { documents, getPatientDocuments, getPatientSummary, patients } = useData();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [documentSummaries, setDocumentSummaries] = useState<Record<string, string>>({});
+  const summaryRef = useRef<HTMLDivElement>(null);
 
   const relevantDocuments = patientId 
     ? getPatientDocuments(patientId)
@@ -39,6 +41,26 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
     }
     return practitionerId || 'Unknown Doctor';
   };
+
+  // Get patient summary if we have a patientId
+  const patientSummary = patientId ? getPatientSummary(patientId) : null;
+
+  // Scroll to summary section if coming from summaries page
+  useEffect(() => {
+    if (highlightSummaryId && patientSummary && summaryRef.current) {
+      setTimeout(() => {
+        summaryRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'start' 
+        });
+        // Add highlight effect
+        summaryRef.current?.classList.add('ring-2', 'ring-blue-500', 'ring-opacity-50');
+        setTimeout(() => {
+          summaryRef.current?.classList.remove('ring-2', 'ring-blue-500', 'ring-opacity-50');
+        }, 3000);
+      }, 500);
+    }
+  }, [highlightSummaryId, patientSummary]);
 
   const generateDocumentSummary = async (documentId: string) => {
     setIsGeneratingSummary(true);
@@ -139,6 +161,53 @@ export default function DocumentManagement({ patientId }: DocumentManagementProp
           </div>
         )}
       </div>
+
+      {/* Summary Section - Show above documents when viewing a specific patient */}
+      {patientId && patientSummary && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6" ref={summaryRef}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
+            <div className="flex items-center space-x-2">
+              {patientSummary.status === 'Draft' && (
+                <>
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                  <span className="text-sm text-yellow-600">Draft</span>
+                </>
+              )}
+              {patientSummary.status === 'Pending Review' && (
+                <>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-sm text-blue-600">Pending Review</span>
+                </>
+              )}
+              {patientSummary.status === 'Approved' && (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-green-600">Approved</span>
+                </>
+              )}
+            </div>
+          </div>
+          
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <p className="text-sm text-gray-700 line-clamp-3">
+              {patientSummary.finalContent || patientSummary.generatedContent}
+            </p>
+            <button
+              onClick={() => window.location.href = `/patients/${patientId}`}
+              className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+            >
+              {patientSummary.status === 'Approved' ? 'View Summary' : 'Edit Summary'} →
+            </button>
+          </div>
+          
+          {patientSummary.approvalTimestamp && (
+            <div className="mt-3 text-xs text-gray-500">
+              Approved on {new Date(patientSummary.approvalTimestamp).toLocaleDateString()}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         {relevantDocuments.length === 0 ? (

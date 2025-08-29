@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Users, FileText, ClipboardList, Home, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import OpenRoomLogo from '../assets/OpenRoomLogo.png';
 
 export default function Navigation() {
   const location = useLocation();
@@ -24,7 +25,7 @@ export default function Navigation() {
   return (
     <aside className="w-64 bg-white border-r border-gray-200 p-6">
       <div className="mb-8">
-        <img src="../src/assets/OpenroomLogo.png" alt="OpenRoomAI" className="h-8" />
+        <img src={OpenRoomLogo} alt="OpenRoomAI" className="h-8" />
         <p className="text-sm text-gray-600">Healthcare Management</p>
         
                  {/* Welcome Message */}

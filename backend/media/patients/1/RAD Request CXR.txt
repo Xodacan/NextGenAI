@@ -1,0 +1,5 @@
+Radiology Request – Portable CXR
+Date: 27-Aug-2025
+Indication: Exclude pneumonia / complications.
+Clinical: Wheeze, O₂ requirement.
+Urgency: Routine (within 1 h).

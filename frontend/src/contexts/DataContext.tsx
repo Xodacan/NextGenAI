@@ -25,12 +25,17 @@ export const formatOccupant = (patient: Patient): string => {
 
 export interface ClinicalDocument {
   id: string;
-  patientId: string;
-  practitionerId: string;
-  documentType: string;
   fileName: string;
+  documentType: string;
   uploadTimestamp: string;
+  practitionerId: string;
+  patientId: string;
   summary?: string;
+  url?: string;
+  status?: string;
+  finalContent?: string;
+  approvedBy?: string;
+  approvalTimestamp?: string;
 }
 
 export interface DischargeSummary {
@@ -48,16 +53,21 @@ interface DataContextType {
   patients: Patient[];
   documents: ClinicalDocument[];
   summaries: DischargeSummary[];
-  addPatient: (patient: Omit<Patient, 'id'>) => Promise<void>;
-  updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
-  addDocument: (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => Promise<void>;
-  deleteDocument: (patientId: string, docIndex: number) => Promise<void>;
-  generateSummary: (patientId: string) => Promise<string>;
-  updateSummary: (id: string, updates: Partial<DischargeSummary>) => void;
+  isLoading: boolean;
+  isGeneratingSummary: boolean;
+  generatingSummaryFor: string | null; // patientId of the summary being generated
   getPatientDocuments: (patientId: string) => ClinicalDocument[];
   getPatientSummary: (patientId: string) => DischargeSummary | undefined;
-  refreshSummary: (summaryId: string) => Promise<void>;
+  addPatient: (patient: Omit<Patient, 'id'>) => Promise<void>;
+  updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
+  deletePatient: (patientId: string) => Promise<void>;
+  addDocument: (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => Promise<void>;
+  deleteDocument: (patientId: string, documentIndex: number) => void;
+  generateSummary: (patientId: string) => Promise<string>;
+  updateSummary: (id: string, updates: Partial<DischargeSummary>) => Promise<void>;
+  deleteSummary: (summaryId: string) => Promise<void>;
   refreshPatients: () => Promise<void>;
+  refreshSummaries: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -66,6 +76,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [documents, setDocuments] = useState<ClinicalDocument[]>([]);
   const [summaries, setSummaries] = useState<DischargeSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [generatingSummaryFor, setGeneratingSummaryFor] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -137,6 +150,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           setPatients(mappedPatients);
 
           const allDocs: ClinicalDocument[] = [];
+          const allSummaries: DischargeSummary[] = [];
+          
           data.forEach((p: any) => {
             const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
             docs.forEach((d: any, idx: number) => {
@@ -148,13 +163,29 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
                 fileName: d.fileName ?? '',
                 uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
                 summary: d.summary,
+                url: d.url,
+                status: d.status,
+                finalContent: d.finalContent,
               });
+              
+              // Check if this document is a discharge summary and add to summaries
+              if (d.documentType === 'Discharge Summary' && d.summary) {
+                allSummaries.push({
+                  id: `summary-${p.id}-${idx + 1}`,
+                  patientId: String(p.id),
+                  status: d.status || 'Draft',  // Use status from document if available
+                  generatedContent: d.summary,
+                  finalContent: d.finalContent || d.summary,  // Use finalContent if available
+                  createdTimestamp: d.uploadTimestamp || new Date().toISOString(),
+                  approvedBy: d.approvedBy,
+                  approvalTimestamp: d.approvalTimestamp
+                });
+              }
             });
           });
+          
           setDocuments(allDocs);
-        } else {
-          const errorText = await res.text();
-          console.error('DataContext - Failed to fetch patients:', res.status, errorText);
+          setSummaries(allSummaries);
         }
       } catch (e) {
         console.error('DataContext - Exception fetching patients:', e);
@@ -266,6 +297,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         fileName: d.fileName ?? '',
         uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
         summary: d.summary,
+        url: d.url,
+        status: d.status,
+        finalContent: d.finalContent,
       }));
       setDocuments(prev => {
         const filtered = prev.filter(d => d.patientId !== document.patientId);
@@ -294,6 +328,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         fileName: d.fileName ?? '',
         uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
         summary: d.summary,
+        url: d.url,
+        status: d.status,
+        finalContent: d.finalContent,
       }));
       setDocuments(prev => {
         const filtered = prev.filter(d => d.patientId !== patientId);
@@ -305,74 +342,242 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const generateSummary = async (patientId: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
     
-    const token = await getIdToken();
-    if (!token) throw new Error('No authentication token');
-    
-    // Get document analyses for this patient
-    const patientDocs = documents.filter(d => d.patientId === patientId);
-    if (patientDocs.length === 0) {
-      throw new Error('No documents found for this patient. Please upload documents first.');
-    }
-    
     try {
-      const response = await fetch('http://localhost:8000/api/openai/generate-discharge-summary/', {
+      // Set global loading state
+      setIsGeneratingSummary(true);
+      setGeneratingSummaryFor(patientId);
+      
+      const token = await getIdToken();
+      if (!token) throw new Error('Failed to get authentication token');
+      
+      const res = await fetch(`http://localhost:8000/api/patients/${patientId}/generate-summary/`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          patient_id: patientId
-          // analysis_ids will be handled by the backend for testing
-        }),
+      });
+      
+      if (!res.ok) {
+        throw new Error(`Failed to generate summary: ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      
+      // Create new summary document
+      const summaryDoc: ClinicalDocument = {
+        id: `summary-${patientId}`,
+        patientId: patientId,
+        practitionerId: user.email || user.fullName || 'Unknown',
+        documentType: 'Discharge Summary',
+        fileName: data.fileName || 'Discharge Summary',
+        uploadTimestamp: new Date().toISOString(),
+        summary: data.summary,
+        url: data.url,
+        status: 'Draft',
+        finalContent: undefined,
+        approvedBy: undefined,
+        approvalTimestamp: undefined
+      };
+      
+      // Add to documents
+      setDocuments(prev => [...prev, summaryDoc]);
+      
+      // Create summary entry
+    const newSummary: DischargeSummary = {
+        id: `summary-${patientId}`,
+        patientId: patientId,
+      status: 'Draft',
+        generatedContent: data.summary,
+        finalContent: undefined,
+        createdTimestamp: new Date().toISOString(),
+        approvedBy: undefined,
+        approvalTimestamp: undefined
+    };
+
+    setSummaries(prev => [...prev, newSummary]);
+      
+    return newSummary.id;
+      
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      throw error;
+    } finally {
+      // Clear global loading state
+      setIsGeneratingSummary(false);
+      setGeneratingSummaryFor(null);
+    }
+  };
+
+  const updateSummary = async (id: string, updates: Partial<DischargeSummary>) => {
+    try {
+      const summary = summaries.find(s => s.id === id);
+      if (!summary) return;
+
+      console.log('updateSummary called:', {
+        id,
+        currentStatus: summary.status,
+        updates,
+        hasFinalContent: 'finalContent' in updates,
+        hasStatus: 'status' in updates,
+        finalContentValue: updates.finalContent?.substring(0, 100) + '...',
+        statusValue: updates.status
+      });
+
+      // First, update local state for immediate UI response
+      setSummaries(prev => {
+        const updated = prev.map(s => s.id === id ? { ...s, ...updates } : s);
+        console.log('Summaries state updated locally:', {
+          before: summary,
+          after: updated.find(s => s.id === id),
+          totalSummaries: updated.length
+        });
+        return updated;
+      });
+
+      // Also update the corresponding document in the documents state
+      setDocuments(prev => {
+        const updated = prev.map(doc => {
+          if (doc.patientId === summary.patientId && doc.documentType === 'Discharge Summary') {
+            const updatedDoc = { 
+              ...doc, 
+              summary: updates.finalContent || doc.summary,
+              finalContent: updates.finalContent || doc.finalContent,
+              status: updates.status || doc.status,
+              approvedBy: updates.approvedBy || doc.approvedBy,
+              approvalTimestamp: updates.approvalTimestamp || doc.approvalTimestamp
+            };
+            console.log('Document state updated locally:', {
+              before: doc,
+              after: updatedDoc
+            });
+            return updatedDoc;
+          }
+          return doc;
+        });
+        return updated;
+      });
+
+      // Now persist to backend
+      const token = await getIdToken();
+      if (!token) {
+        console.error('No authentication token available');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8000/api/patients/${summary.patientId}/update-summary/`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate summary');
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      console.log('Backend update successful:', result);
+
+      console.log(`Summary ${id} updated successfully: ${Object.keys(updates).join(', ')}`);
       
-      if (data.success) {
-        // Fetch the generated summary to get its details
-        const summaryResponse = await fetch(`http://localhost:8000/api/openai/discharge-summary/${data.discharge_summary_id}/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
+    } catch (error) {
+      console.error('Error updating summary:', error);
+      
+      // Revert local state changes on error
+      console.log('Reverting local state changes due to backend error');
+      setSummaries(prev => prev.map(s => s.id === id ? { ...s } : s));
+      
+      // Get the summary again to revert document changes
+      const summaryToRevert = summaries.find(s => s.id === id);
+      if (summaryToRevert) {
+        setDocuments(prev => prev.map(doc => {
+          if (doc.patientId === summaryToRevert.patientId && doc.documentType === 'Discharge Summary') {
+            return { ...doc };
           }
-        });
-        
-        if (summaryResponse.ok) {
-          const summaryData = await summaryResponse.json();
-          if (summaryData.success && summaryData.discharge_summary) {
-            const summary = summaryData.discharge_summary;
-            const newSummary: DischargeSummary = {
-              id: String(summary.id),
-              patientId: String(summary.patient_id || patientId),
-              status: summary.status || 'Draft',
-              generatedContent: summary.formatted_summary || '',
-              finalContent: summary.formatted_summary || '',
-              createdTimestamp: summary.created_at || new Date().toISOString(),
-              approvalTimestamp: summary.finalized_at,
-              approvedBy: summary.approved_by
-            };
-            
-            setSummaries(prev => [...prev, newSummary]);
-            return newSummary.id;
-          }
-        }
+          return doc;
+        }));
       }
       
-      throw new Error('Failed to generate summary');
-    } catch (error) {
-      console.error('Error generating summary:', error);
+      // Re-throw error so UI can handle it
       throw error;
     }
   };
 
-  const updateSummary = (id: string, updates: Partial<DischargeSummary>) => {
-    setSummaries(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  const deleteSummary = async (summaryId: string) => {
+    try {
+      const summary = summaries.find(s => s.id === summaryId);
+      if (!summary) return;
+
+      console.log('Deleting summary:', {
+        id: summaryId,
+        patientId: summary.patientId,
+        status: summary.status
+      });
+
+      // Remove from summaries state
+      setSummaries(prev => prev.filter(s => s.id !== summaryId));
+
+      // Remove the corresponding document from documents state
+      setDocuments(prev => prev.filter(doc => 
+        !(doc.patientId === summary.patientId && doc.documentType === 'Discharge Summary')
+      ));
+
+      console.log(`Summary ${summaryId} deleted successfully`);
+      
+    } catch (error) {
+      console.error('Error deleting summary:', error);
+    }
+  };
+
+  const deletePatient = async (patientId: string) => {
+    try {
+      const patient = patients.find(p => p.id === patientId);
+      if (!patient) return;
+
+      console.log('Deleting patient:', {
+        id: patientId,
+        name: `${patient.firstName} ${patient.lastName}`,
+        status: patient.status
+      });
+
+      const token = await getIdToken();
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+
+      const response = await fetch(`http://localhost:8000/api/patients/${patientId}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('Backend delete successful:', result);
+
+      // Remove patient from local state
+      setPatients(prev => prev.filter(p => p.id !== patientId));
+
+      // Remove all documents and summaries for this patient
+      setDocuments(prev => prev.filter(doc => doc.patientId !== patientId));
+      setSummaries(prev => prev.filter(summary => summary.patientId !== patientId));
+
+      console.log(`Patient ${patientId} deleted successfully`);
+      
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      throw error;
+    }
   };
 
   const getPatientDocuments = (patientId: string) => {
@@ -383,13 +588,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return summaries.find(s => s.patientId === patientId);
   };
 
-  const refreshSummary = async (summaryId: string) => {
+  const refreshSummaries = async () => {
     if (!user) return;
     try {
       const token = await getIdToken();
       if (!token) return;
       
-      const res = await fetch(`http://localhost:8000/api/openai/discharge-summary/${summaryId}/`, {
+      // Get all patients to extract summaries from their documents
+      const res = await fetch('http://localhost:8000/api/patients/', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -398,24 +604,138 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.discharge_summary) {
-          const summary = data.discharge_summary;
-          const updatedSummary: DischargeSummary = {
-            id: String(summary.id),
-            patientId: String(summary.patient_id || summary.patientId),
-            status: summary.status || 'Draft',
-            generatedContent: summary.formatted_summary || summary.generatedContent,
-            finalContent: summary.formatted_summary || summary.finalContent,
-            createdTimestamp: summary.created_at || summary.createdTimestamp,
-            approvalTimestamp: summary.finalized_at || summary.approvalTimestamp,
-            approvedBy: summary.approved_by || summary.approvedBy
-          };
+        const allSummaries: DischargeSummary[] = [];
+        
+        data.forEach((p: any) => {
+          const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
           
-          setSummaries(prev => prev.map(s => s.id === summaryId ? updatedSummary : s));
+          // Find the discharge summary document for this patient
+          const dischargeSummaryDoc = docs.find(d => d.documentType === 'Discharge Summary' && d.summary);
+          
+          if (dischargeSummaryDoc) {
+            const summaryId = `summary-${p.id}`;
+            
+            // Check if we have local changes for this summary
+            const existingSummary = summaries.find(s => s.id === summaryId);
+            
+            allSummaries.push({
+              id: summaryId,
+              patientId: String(p.id),
+              // Preserve local status if it exists, otherwise use backend status
+              status: existingSummary?.status || dischargeSummaryDoc.status || 'Draft',
+              generatedContent: dischargeSummaryDoc.summary,
+              // Preserve local finalContent if it exists, otherwise use backend finalContent
+              finalContent: existingSummary?.finalContent || dischargeSummaryDoc.finalContent || dischargeSummaryDoc.summary,
+              createdTimestamp: dischargeSummaryDoc.uploadTimestamp || new Date().toISOString(),
+              // Preserve local approval data if it exists
+              approvedBy: existingSummary?.approvedBy || dischargeSummaryDoc.approvedBy,
+              approvalTimestamp: existingSummary?.approvalTimestamp || dischargeSummaryDoc.approvalTimestamp
+            });
+          }
+          
+          docs.forEach((d: any, idx: number) => {
+            const docId = `${p.id}-${idx + 1}`;
+            
+            // Check if we have local changes for this document
+            const existingDoc = documents.find(doc => doc.id === docId);
+            
+            allDocs.push({
+              id: docId,
+              patientId: String(p.id),
+              practitionerId: d.practitionerId ?? '',
+              documentType: d.documentType ?? '',
+              fileName: d.fileName ?? '',
+              uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+              summary: d.summary,
+              // Preserve local changes if they exist
+              url: existingDoc?.url || d.url,
+              status: existingDoc?.status || d.status,
+              finalContent: existingDoc?.finalContent || d.finalContent,
+              approvedBy: existingDoc?.approvedBy || d.approvedBy,
+              approvalTimestamp: existingDoc?.approvalTimestamp || d.approvalTimestamp
+            });
+          });
+        });
+        
+        // Update summaries state
+        setSummaries(allSummaries);
+        
+        // Also update documents to ensure consistency
+        const allDocs: ClinicalDocument[] = [];
+        data.forEach((p: any) => {
+          const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
+          docs.forEach((d: any, idx: number) => {
+            const docId = `${p.id}-${idx + 1}`;
+            
+            // Check if we have local changes for this document
+            const existingDoc = documents.find(doc => doc.id === docId);
+            
+            allDocs.push({
+              id: docId,
+              patientId: String(p.id),
+              practitionerId: d.practitionerId ?? '',
+              documentType: d.documentType ?? '',
+              fileName: d.fileName ?? '',
+              uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+              summary: d.summary,
+              // Preserve local changes if they exist
+              url: existingDoc?.url || d.url,
+              status: existingDoc?.status || d.status,
+              finalContent: existingDoc?.finalContent || d.finalContent,
+              approvedBy: existingDoc?.approvedBy || d.approvedBy,
+              approvalTimestamp: existingDoc?.approvalTimestamp || d.approvalTimestamp
+            });
+            
+            // Check if this document is a discharge summary and add to summaries
+            if (d.documentType === 'Discharge Summary' && d.summary) {
+              const summaryId = `summary-${p.id}-${idx + 1}`;
+              
+              // Check if we have local changes for this summary
+              const existingSummary = summaries.find(s => s.id === summaryId);
+              
+              allSummaries.push({
+                id: summaryId,
+                patientId: String(p.id),
+                // Preserve local status if it exists, otherwise use backend status
+                status: existingSummary?.status || d.status || 'Draft',
+                generatedContent: d.summary,
+                // Preserve local finalContent if it exists, otherwise use backend finalContent
+                finalContent: existingSummary?.finalContent || d.finalContent || d.summary,
+                createdTimestamp: d.uploadTimestamp || new Date().toISOString(),
+                // Preserve local approval data if it exists
+                approvedBy: existingSummary?.approvedBy || d.approvedBy,
+                approvalTimestamp: existingSummary?.approvalTimestamp || d.approvalTimestamp
+              });
+            }
+          });
+        });
+        setDocuments(allDocs);
+        
+        console.log(`Refreshed ${allSummaries.length} summaries and ${allDocs.length} documents with local changes preserved`);
+        
+        // Debug: Log any summaries that have local changes
+        const summariesWithLocalChanges = allSummaries.filter(s => {
+          const existing = summaries.find(es => es.id === s.id);
+          return existing && (
+            existing.status !== s.status ||
+            existing.finalContent !== s.finalContent ||
+            existing.approvedBy !== s.approvedBy ||
+            existing.approvalTimestamp !== s.approvalTimestamp
+          );
+        });
+        
+        if (summariesWithLocalChanges.length > 0) {
+          console.log('Summaries with local changes preserved:', summariesWithLocalChanges.map(s => ({
+            id: s.id,
+            status: s.status,
+            hasFinalContent: !!s.finalContent,
+            approvedBy: s.approvedBy,
+            approvalTimestamp: s.approvalTimestamp
+          })));
         }
       }
-    } catch (e) {
-      console.error('Failed to refresh summary', e);
+    } catch (error) {
+      console.error('Error refreshing summaries:', error);
     }
   };
 
@@ -445,24 +765,64 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setPatients(mappedPatients);
 
         const allDocs: ClinicalDocument[] = [];
+        const allSummaries: DischargeSummary[] = [];
+        
         data.forEach((p: any) => {
           const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
+          
+          // Find the discharge summary document for this patient
+          const dischargeSummaryDoc = docs.find(d => d.documentType === 'Discharge Summary' && d.summary);
+          
+          if (dischargeSummaryDoc) {
+            const summaryId = `summary-${p.id}`;
+            
+            // Check if we have local changes for this summary
+            const existingSummary = summaries.find(s => s.id === summaryId);
+            
+            allSummaries.push({
+              id: summaryId,
+              patientId: String(p.id),
+              // Preserve local status if it exists, otherwise use backend status
+              status: existingSummary?.status || dischargeSummaryDoc.status || 'Draft',
+              generatedContent: dischargeSummaryDoc.summary,
+              // Preserve local finalContent if it exists, otherwise use backend finalContent
+              finalContent: existingSummary?.finalContent || dischargeSummaryDoc.finalContent || dischargeSummaryDoc.summary,
+              createdTimestamp: dischargeSummaryDoc.uploadTimestamp || new Date().toISOString(),
+              // Preserve local approval data if it exists
+              approvedBy: existingSummary?.approvedBy || dischargeSummaryDoc.approvedBy,
+              approvalTimestamp: existingSummary?.approvalTimestamp || dischargeSummaryDoc.approvalTimestamp
+            });
+          }
+          
           docs.forEach((d: any, idx: number) => {
+            const docId = `${p.id}-${idx + 1}`;
+            
+            // Check if we have local changes for this document
+            const existingDoc = documents.find(doc => doc.id === docId);
+            
             allDocs.push({
-              id: `${p.id}-${idx + 1}`,
+              id: docId,
               patientId: String(p.id),
               practitionerId: d.practitionerId ?? '',
               documentType: d.documentType ?? '',
               fileName: d.fileName ?? '',
               uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
               summary: d.summary,
+              // Preserve local changes if they exist
+              url: existingDoc?.url || d.url,
+              status: existingDoc?.status || d.status,
+              finalContent: existingDoc?.finalContent || d.finalContent,
+              approvedBy: existingDoc?.approvedBy || d.approvedBy,
+              approvalTimestamp: existingDoc?.approvalTimestamp || d.approvalTimestamp
             });
           });
         });
+        
         setDocuments(allDocs);
+        setSummaries(allSummaries);
       }
-    } catch (e) {
-      console.error('Failed to refresh patients', e);
+    } catch (error) {
+      console.error('Error refreshing patients:', error);
     }
   };
 
@@ -471,16 +831,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       patients,
       documents,
       summaries,
+      isLoading,
+      isGeneratingSummary,
+      generatingSummaryFor,
       addPatient,
       updatePatient,
+      deletePatient,
       addDocument,
       deleteDocument,
       generateSummary,
       updateSummary,
+      deleteSummary,
       getPatientDocuments,
       getPatientSummary,
-      refreshSummary,
-      refreshPatients
+      refreshPatients,
+      refreshSummaries
     }}>
       {children}
     </DataContext.Provider>
