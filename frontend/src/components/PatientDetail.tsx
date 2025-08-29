@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
-import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2, Edit3 } from 'lucide-react';
 
 import DocumentUploadModal from './DocumentUploadModal';
 import DocumentViewerModal from './DocumentViewerModal';
@@ -13,15 +13,19 @@ interface PatientDetailProps {
 }
 
 export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient } = useData();
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
   const summary = getPatientSummary(patientId);
+
+  // Check if we're generating a summary for this patient
+  const isGeneratingForThisPatient = isGeneratingSummary && generatingSummaryFor === patientId;
 
   if (!patient) {
     return <div>Patient not found</div>;
@@ -33,15 +37,25 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       return;
     }
     
-    setIsGenerating(true);
+    // setIsGenerating(true); // This line is removed as per the edit hint
+    setShowSuccessMessage(false);
     try {
       const summaryId = await generateSummary(patientId);
+      setSuccessMessage('Discharge summary generated successfully! OpenRoom has created a comprehensive summary based on your clinical documents.');
+      setShowSuccessMessage(true);
+      
+      // Don't refresh summaries - this could overwrite local changes
+      // The generateSummary function already updates local state
+      
       onEditSummary(summaryId);
     } catch (error) {
       console.error('Failed to generate summary:', error);
-      alert(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setSuccessMessage(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setShowSuccessMessage(true);
     } finally {
-      setIsGenerating(false);
+      // setIsGenerating(false); // This line is removed as per the edit hint
+      // Hide success message after 5 seconds
+      setTimeout(() => setShowSuccessMessage(false), 5000);
     }
   };
 
@@ -86,14 +100,36 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
           </button>
           
           {!summary ? (
-            <button
-              onClick={handleGenerateSummary}
-              disabled={isGenerating || documents.length === 0}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <Brain className="h-4 w-4 mr-2" />
-              {isGenerating ? 'Generating...' : 'Generate Summary'}
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleGenerateSummary}
+                disabled={isGeneratingForThisPatient || documents.length === 0}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {isGeneratingForThisPatient ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    OpenRoom is generating your summary...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-4 w-4 mr-2" />
+                    Generate Summary
+                  </>
+                )}
+              </button>
+              
+              {isGeneratingForThisPatient && (
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                  </div>
+                  <span>OpenRoom is processing your documents...</span>
+                </div>
+              )}
+            </div>
           ) : (
             <button
               onClick={() => onEditSummary(summary.id)}
@@ -105,6 +141,56 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
           )}
         </div>
       </div>
+
+      {/* Status Message Area */}
+      {isGeneratingForThisPatient && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center space-x-3 mb-3">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div>
+              <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
+              <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
+            </div>
+          </div>
+          
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2 text-sm text-blue-600">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>Processing clinical documents</span>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-blue-600">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>Analyzing medical content</span>
+            </div>
+            <div className="flex items-center space-x-2 text-sm text-blue-600">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>Generating comprehensive summary</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success/Error Message Area */}
+      {showSuccessMessage && (
+        <div className={`border rounded-lg p-4 mb-6 ${
+          successMessage.includes('Failed') 
+            ? 'bg-red-50 border-red-200' 
+            : 'bg-green-50 border-green-200'
+        }`}>
+          <div className="flex items-center">
+            {successMessage.includes('Failed') ? (
+              <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+            ) : (
+              <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+            )}
+            <p className={`text-sm ${
+              successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
+            }`}>
+              {successMessage}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
@@ -148,6 +234,60 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {/* Summary Section - Moved above documents */}
+          {summary && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
+                <div className="flex items-center space-x-2">
+                  {summary.status === 'Draft' && (
+                    <>
+                      <Clock className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm text-yellow-600">Draft</span>
+                    </>
+                  )}
+                  {summary.status === 'Pending Review' && (
+                    <>
+                      <Edit3 className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm text-blue-600">Pending Review</span>
+                    </>
+                  )}
+                  {summary.status === 'Approved' && (
+                    <>
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-green-600">Approved</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-700 line-clamp-3">
+                  {summary.finalContent || summary.generatedContent}
+                </p>
+                {summary.status !== 'Approved' ? (
+                  <button
+                    onClick={() => onEditSummary(summary.id)}
+                    className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'} →
+                  </button>
+                ) : (
+                  <div className="mt-2 text-sm text-gray-500">
+                    Summary finalized - view only
+                  </div>
+                )}
+              </div>
+              
+              {summary.approvalTimestamp && (
+                <div className="mt-3 text-xs text-gray-500">
+                  Approved on {new Date(summary.approvalTimestamp).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Clinical Documents</h3>
@@ -194,52 +334,6 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               </div>
             )}
           </div>
-
-          {summary && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
-                <div className="flex items-center space-x-2">
-                  {summary.status === 'Draft' && (
-                    <>
-                      <Clock className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-600">Draft</span>
-                    </>
-                  )}
-                  {summary.status === 'Pending Review' && (
-                    <>
-                      <AlertCircle className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm text-blue-600">Pending Review</span>
-                    </>
-                  )}
-                  {summary.status === 'Approved' && (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-600">Approved</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-700 line-clamp-3">
-                  {summary.finalContent || summary.generatedContent}
-                </p>
-                <button
-                  onClick={() => onEditSummary(summary.id)}
-                  className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
-                >
-                  View Full Summary →
-                </button>
-              </div>
-              
-              {summary.approvalTimestamp && (
-                <div className="mt-3 text-xs text-gray-500">
-                  Approved on {new Date(summary.approvalTimestamp).toLocaleDateString()}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 

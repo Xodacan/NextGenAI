@@ -1,0 +1,12 @@
+Paediatric Ward Progress – Day 0 (Night of Admission)
+Date/Time: 27-Aug-2025 22:30
+Author: Dr M. Hill (Paediatric Registrar)
+Transferred stable from ED at 22:15.
+Current vitals: T 37.0 °C, HR 136, RR 28, SpO2 97 % on 2 L O₂.
+Chest: Mild wheeze bilaterally, good air entry.
+Plan:
+Continue O₂ weaning as tolerated.
+Nebulised salbutamol q2h → wean to q4h if SpO2 ≥ 94 % RA.
+Prednisolone 20 mg daily × 2 more days.
+Hydration maintenance (oral encouraged).
+Obs q2h overnight.
