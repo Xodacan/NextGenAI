@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useData } from '../contexts/DataContext';
+
+import React from 'react';
+import { useAuth } from '../contexts/MockAuthContext';
+import { useData, formatOccupant } from '../contexts/DataContext';
 import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings } from 'lucide-react';
 import UserSettings from './UserSettings';
 
@@ -124,7 +125,7 @@ export default function Dashboard() {
               <div key={patient.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-900">{patient.firstName} {patient.lastName}</p>
-                  <p className="text-sm text-gray-600">Room {patient.roomNumber}</p>
+                  <p className="text-sm text-gray-600">{formatOccupant(patient)}</p>
                 </div>
                 <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                   patient.status === 'Active' ? 'bg-green-100 text-green-800' :

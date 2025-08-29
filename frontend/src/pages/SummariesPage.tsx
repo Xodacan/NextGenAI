@@ -1,5 +1,5 @@
 import React from 'react';
-import { useData } from '../contexts/DataContext';
+import { useData, formatOccupant } from '../contexts/DataContext';
 import { useNavigate } from 'react-router-dom';
 import { FileText, CheckCircle, Clock, Edit3 } from 'lucide-react';
 
@@ -65,7 +65,7 @@ export default function SummariesPage() {
                             {patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient'}
                           </div>
                           <div className="text-sm text-gray-500">
-                            Room {patient?.roomNumber || 'N/A'}
+                            {patient ? formatOccupant(patient) : 'N/A'}
                           </div>
                         </div>
                       </td>
