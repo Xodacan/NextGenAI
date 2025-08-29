@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'core',
     'firebase_auth',
+    'alibaba_cloud',
 ]
 
 MIDDLEWARE = [
