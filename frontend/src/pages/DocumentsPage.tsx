@@ -1,11 +1,12 @@
-import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import DocumentManagement from '../components/DocumentManagement';
 
 export default function DocumentsPage() {
   const { patientId } = useParams<{ patientId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
 
   if (!patientId) {
     return <div className="p-6">Patient not found</div>;
@@ -14,6 +15,9 @@ export default function DocumentsPage() {
   const handleBack = () => {
     navigate(`/patients/${patientId}`);
   };
+
+  // Check if we're coming from summaries page (has summaryId in state)
+  const summaryId = location.state?.summaryId;
 
   return (
     <div className="p-6">
@@ -26,7 +30,7 @@ export default function DocumentsPage() {
           Back to Patient
         </button>
       </div>
-      <DocumentManagement patientId={patientId} />
+      <DocumentManagement patientId={patientId} highlightSummaryId={summaryId} />
     </div>
   );
 } 

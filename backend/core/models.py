@@ -29,7 +29,27 @@ class Patient(models.Model):
     last_name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     admission_date = models.DateField()
-    room_number = models.CharField(max_length=50)
+    
+    # New occupant system to support Room, Bed, and ER Patient
+    occupant_type = models.CharField(
+        max_length=32,
+        choices=(
+            ('Room', 'Room'),
+            ('Bed', 'Bed'),
+            ('ER Patient', 'ER Patient'),
+        ),
+        default='Room',
+        help_text="Type of accommodation for the patient"
+    )
+    occupant_value = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Room number, bed number, or ER designation"
+    )
+    
+    # Legacy room_number field (kept for backward compatibility)
+    room_number = models.CharField(max_length=50, blank=True, null=True)
+    
     status = models.CharField(
         max_length=32,
         choices=(
@@ -55,4 +75,15 @@ class Patient(models.Model):
 
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.doctor_id})"
+    
+    def get_occupant_display(self):
+        """Get a human-readable display of the patient's location"""
+        if self.occupant_type == 'ER Patient':
+            return 'ER Patient'
+        elif self.occupant_type == 'Bed':
+            return f"Bed {self.occupant_value}" if self.occupant_value else "Bed"
+        elif self.occupant_type == 'Room':
+            return f"Room {self.occupant_value}" if self.occupant_value else "Room"
+        else:
+            return self.room_number or "Unknown"
 
