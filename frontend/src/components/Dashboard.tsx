@@ -12,10 +12,38 @@ export default function Dashboard() {
 
   const hasAnyData = patients.length > 0 || documents.length > 0 || summaries.length > 0;
 
+  // Sample data with correct structure for formatOccupant function
   const samplePatients = [
-    { id: 'sp1', firstName: 'Jane', lastName: 'Smith', roomNumber: 'B-210', status: 'Active' as const },
-    { id: 'sp2', firstName: 'Michael', lastName: 'Brown', roomNumber: 'C-105', status: 'Pending Discharge' as const },
-    { id: 'sp3', firstName: 'Ava', lastName: 'Johnson', roomNumber: 'A-112', status: 'Discharged' as const },
+    { 
+      id: 'sp1', 
+      firstName: 'Jane', 
+      lastName: 'Smith', 
+      dateOfBirth: '1985-06-15',
+      admissionDate: '2024-01-20',
+      occupantType: 'Room' as const,
+      occupantValue: 'B-210', 
+      status: 'Active' as const 
+    },
+    { 
+      id: 'sp2', 
+      firstName: 'Michael', 
+      lastName: 'Brown', 
+      dateOfBirth: '1972-09-28',
+      admissionDate: '2024-01-18',
+      occupantType: 'Bed' as const,
+      occupantValue: 'C-105', 
+      status: 'Pending Discharge' as const 
+    },
+    { 
+      id: 'sp3', 
+      firstName: 'Ava', 
+      lastName: 'Johnson', 
+      dateOfBirth: '1990-03-12',
+      admissionDate: '2024-01-15',
+      occupantType: 'Room' as const,
+      occupantValue: 'A-112', 
+      status: 'Discharged' as const 
+    },
   ];
 
   const sampleDocuments = [
