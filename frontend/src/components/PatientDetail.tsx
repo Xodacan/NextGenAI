@@ -39,6 +39,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       onEditSummary(summaryId);
     } catch (error) {
       console.error('Failed to generate summary:', error);
+      alert(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsGenerating(false);
     }

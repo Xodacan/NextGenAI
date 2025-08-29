@@ -10,10 +10,12 @@ def initialize_firebase():
     try:
         # Check if Firebase is already initialized
         firebase_admin.get_app()
+        print("Firebase already initialized")
         return True
     except ValueError:
         # Firebase not initialized, initialize it
         try:
+            print("Initializing Firebase...")
             # Use environment variables for Firebase configuration
             service_account_info = {
                 "type": "service_account",
@@ -28,6 +30,10 @@ def initialize_firebase():
                 "client_x509_cert_url": config('FIREBASE_CLIENT_X509_CERT_URL', default='')
             }
             
+            print(f"Project ID: {service_account_info['project_id']}")
+            print(f"Client Email: {service_account_info['client_email']}")
+            print(f"Private Key exists: {bool(service_account_info['private_key'])}")
+            
             # Check if we have the required Firebase configuration
             if not service_account_info['project_id'] or not service_account_info['private_key']:
                 print("Firebase environment variables not configured. Please set up your .env file.")
@@ -35,6 +41,7 @@ def initialize_firebase():
             
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
+            print("Firebase initialized successfully")
             return True
         except Exception as e:
             print(f"Error initializing Firebase: {e}")
@@ -43,11 +50,14 @@ def initialize_firebase():
 def verify_firebase_token(id_token):
     """Verify Firebase ID token and return user info"""
     try:
+        print(f"Verifying Firebase token: {id_token[:20]}...")
+        
         # Initialize Firebase if not already done
         initialize_firebase()
         
         # Verify the token
         decoded_token = auth.verify_id_token(id_token)
+        print(f"Token verified successfully for user: {decoded_token.get('uid')}")
         
         return {
             'uid': decoded_token['uid'],

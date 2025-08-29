@@ -1,11 +1,13 @@
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings } from 'lucide-react';
 import UserSettings from './UserSettings';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { patients, documents, summaries } = useData();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -31,7 +33,8 @@ export default function Dashboard() {
       icon: Users,
       color: 'bg-blue-500',
       change: '+12%',
-      changeType: 'positive'
+      changeType: 'positive',
+      onClick: () => navigate('/patients')
     },
     {
       title: 'Active Documents',
@@ -66,14 +69,7 @@ export default function Dashboard() {
     <div className="p-6">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Welcome back, {(() => {
-            const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-            if (!user) return 'Doctor';
-            if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
-            // Derive name from email before '@' and capitalize first letter
-            const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
-            return capitalize(nameFromEmail);
-          })()}!</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
         </div>
         
@@ -92,7 +88,11 @@ export default function Dashboard() {
         {stats.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <div key={index} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div 
+              key={index} 
+              className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${stat.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+              onClick={stat.onClick}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">{stat.title}</p>
