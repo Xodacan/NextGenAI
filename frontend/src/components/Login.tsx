@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Lock, Mail, AlertCircle } from 'lucide-react';
-import { useAuth } from '../contexts/MockAuthContext';
+import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {

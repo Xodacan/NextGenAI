@@ -1,6 +1,5 @@
 import { 
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   User as FirebaseUser
@@ -76,6 +75,12 @@ export const signOut = async (): Promise<void> => {
 // Get current user
 export const getCurrentUser = (): FirebaseUser | null => {
   return auth.currentUser;
+};
+
+export const getIdToken = async (): Promise<string | null> => {
+  const user = auth.currentUser;
+  if (!user) return null;
+  return await user.getIdToken();
 };
 
 // Listen to auth state changes

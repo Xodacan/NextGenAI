@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { X, Upload, FileText } from 'lucide-react';
+import { X, Upload, FileText, Loader } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
-import { useAuth } from '../contexts/MockAuthContext';
+import { useAuth } from '../contexts/AuthContext';
+import { getIdToken } from '../firebase/auth';
 
 interface DocumentUploadModalProps {
   patientId: string;
@@ -9,11 +10,12 @@ interface DocumentUploadModalProps {
 }
 
 export default function DocumentUploadModal({ patientId, onClose }: DocumentUploadModalProps) {
-  const { addDocument } = useData();
+  const { addDocument, refreshPatients } = useData();
   const { user } = useAuth();
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [documentType, setDocumentType] = useState('Lab Results');
+  const [isLoading, setIsLoading] = useState(false);
 
   const documentTypes = [
     'Admission Form',
@@ -23,6 +25,7 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
     'Medication Record',
     'Consultation Note',
     'Discharge Planning',
+    'Text Document',
     'Other'
   ];
 
@@ -58,17 +61,42 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
-    // Simulate upload for each file
-    for (const file of selectedFiles) {
-      addDocument({
-        patientId,
-        practitionerId: user!.id,
-        documentType,
-        fileName: file.name
-      });
-    }
+    setIsLoading(true);
 
-    onClose();
+    try {
+      // Upload each file to the backend
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('documentType', documentType);
+        formData.append('fileName', file.name);
+        formData.append('practitionerId', user!.id);
+        formData.append('uploadTimestamp', new Date().toISOString());
+
+        const token = await getIdToken();
+        const response = await fetch(`http://localhost:8000/api/patients/${patientId}/documents/`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to upload ${file.name}`);
+        }
+      }
+
+      // Refresh the documents list to show the newly uploaded files
+      await refreshPatients();
+
+      onClose();
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Failed to upload one or more files. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -117,7 +145,7 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
             <input
               type="file"
               multiple
-              accept=".pdf,.docx,.doc,.jpg,.jpeg,.png"
+              accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.txt"
               onChange={handleFileSelect}
               className="hidden"
               id="file-input"
@@ -129,7 +157,7 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
               Browse Files
             </label>
             <p className="text-xs text-gray-500 mt-2">
-              Supported: PDF, DOCX, DOC, JPG, PNG
+              Supported: PDF, DOCX, DOC, JPG, PNG, TXT
             </p>
           </div>
 
@@ -157,16 +185,24 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
         <div className="flex justify-end space-x-3 pt-6">
           <button
             onClick={onClose}
-            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={isLoading}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             onClick={handleUpload}
-            disabled={selectedFiles.length === 0}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            disabled={selectedFiles.length === 0 || isLoading}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
-            Upload {selectedFiles.length > 0 && `(${selectedFiles.length})`}
+            {isLoading ? (
+              <>
+                <Loader className="h-4 w-4 animate-spin" />
+                <span>Uploading...</span>
+              </>
+            ) : (
+              <span>Upload {selectedFiles.length > 0 && `(${selectedFiles.length})`}</span>
+            )}
           </button>
         </div>
       </div>

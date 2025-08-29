@@ -1,16 +1,33 @@
+
 import React from 'react';
 import { useAuth } from '../contexts/MockAuthContext';
 import { useData, formatOccupant } from '../contexts/DataContext';
-import { Users, FileText, ClipboardList, Activity, TrendingUp } from 'lucide-react';
+import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings } from 'lucide-react';
+import UserSettings from './UserSettings';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { patients, documents, summaries } = useData();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const hasAnyData = patients.length > 0 || documents.length > 0 || summaries.length > 0;
+
+  const samplePatients = [
+    { id: 'sp1', firstName: 'Jane', lastName: 'Smith', roomNumber: 'B-210', status: 'Active' as const },
+    { id: 'sp2', firstName: 'Michael', lastName: 'Brown', roomNumber: 'C-105', status: 'Pending Discharge' as const },
+    { id: 'sp3', firstName: 'Ava', lastName: 'Johnson', roomNumber: 'A-112', status: 'Discharged' as const },
+  ];
+
+  const sampleDocuments = [
+    { id: 'sd1', fileName: 'admission_form.pdf', documentType: 'Admission Form', uploadTimestamp: new Date().toISOString() },
+    { id: 'sd2', fileName: 'cbc_results.pdf', documentType: 'Lab Results', uploadTimestamp: new Date().toISOString() },
+    { id: 'sd3', fileName: 'chest_xray.jpg', documentType: 'Radiology Report', uploadTimestamp: new Date().toISOString() },
+  ];
 
   const stats = [
     {
       title: 'Total Patients',
-      value: patients.length,
+      value: hasAnyData ? patients.length : 24,
       icon: Users,
       color: 'bg-blue-500',
       change: '+12%',
@@ -18,7 +35,7 @@ export default function Dashboard() {
     },
     {
       title: 'Active Documents',
-      value: documents.length,
+      value: hasAnyData ? documents.length : 58,
       icon: FileText,
       color: 'bg-green-500',
       change: '+8%',
@@ -26,7 +43,7 @@ export default function Dashboard() {
     },
     {
       title: 'Pending Summaries',
-      value: summaries.filter(s => s.status === 'Draft').length,
+      value: hasAnyData ? summaries.filter(s => s.status === 'Draft').length : 4,
       icon: ClipboardList,
       color: 'bg-yellow-500',
       change: '+5%',
@@ -34,7 +51,7 @@ export default function Dashboard() {
     },
     {
       title: 'Approved Summaries',
-      value: summaries.filter(s => s.status === 'Approved').length,
+      value: hasAnyData ? summaries.filter(s => s.status === 'Approved').length : 9,
       icon: Activity,
       color: 'bg-purple-500',
       change: '+15%',
@@ -42,14 +59,32 @@ export default function Dashboard() {
     }
   ];
 
-  const recentPatients = patients.slice(0, 5);
-  const recentDocuments = documents.slice(0, 5);
+  const recentPatients = hasAnyData ? patients.slice(0, 5) : samplePatients;
+  const recentDocuments = hasAnyData ? documents.slice(0, 5) : sampleDocuments;
 
   return (
     <div className="p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.fullName}!</h1>
-        <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Welcome back, {(() => {
+            const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+            if (!user) return 'Doctor';
+            if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
+            // Derive name from email before '@' and capitalize first letter
+            const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
+            return capitalize(nameFromEmail);
+          })()}!</h1>
+          <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
+        </div>
+        
+        {/* Settings Button */}
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+        >
+          <Settings className="h-5 w-5 text-gray-600" />
+          <span className="text-sm font-medium text-gray-700">Settings</span>
+        </button>
       </div>
 
       {/* Stats Grid */}
@@ -82,6 +117,9 @@ export default function Dashboard() {
         {/* Recent Patients */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Patients</h2>
+          {!hasAnyData && (
+            <p className="text-sm text-gray-500 mb-3">Sample data shown. Add a patient to get started.</p>
+          )}
           <div className="space-y-4">
             {recentPatients.map(patient => (
               <div key={patient.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -104,6 +142,9 @@ export default function Dashboard() {
         {/* Recent Documents */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Documents</h2>
+          {!hasAnyData && (
+            <p className="text-sm text-gray-500 mb-3">Sample data shown. Upload a document to see it here.</p>
+          )}
           <div className="space-y-4">
             {recentDocuments.map(document => (
               <div key={document.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -119,6 +160,12 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* User Settings Modal */}
+      <UserSettings 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </div>
   );
 }

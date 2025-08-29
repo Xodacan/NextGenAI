@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle } from 'lucide-react';
 import { useData, formatOccupant } from '../contexts/DataContext';
+import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2 } from 'lucide-react';
+
 import DocumentUploadModal from './DocumentUploadModal';
+import DocumentViewerModal from './DocumentViewerModal';
 
 interface PatientDetailProps {
   patientId: string;
@@ -11,9 +13,11 @@ interface PatientDetailProps {
 }
 
 export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary } = useData();
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -37,6 +41,19 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       console.error('Failed to generate summary:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextStatus = e.target.value as typeof patient.status;
+    if (nextStatus === patient.status) return;
+    try {
+      setIsUpdatingStatus(true);
+      await updatePatient(patientId, { status: nextStatus });
+    } catch (err) {
+      console.error('Failed to update status', err);
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -102,16 +119,28 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 <p className="font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-500">Status</p>
-                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                  patient.status === 'Active' 
-                    ? 'bg-green-100 text-green-800'
-                    : patient.status === 'Pending Discharge'
-                    ? 'bg-yellow-100 text-yellow-800'
-                    : 'bg-gray-100 text-gray-800'
-                }`}>
-                  {patient.status}
-                </span>
+                <p className="text-sm text-gray-500 mb-1">Status</p>
+                <div className="flex items-center space-x-3">
+                  <select
+                    value={patient.status}
+                    onChange={handleStatusChange}
+                    disabled={isUpdatingStatus}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Pending Discharge">Pending</option>
+                    <option value="Discharged">Discharged</option>
+                  </select>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    patient.status === 'Active'
+                      ? 'bg-green-100 text-green-800'
+                      : patient.status === 'Pending Discharge'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {isUpdatingStatus ? 'Updating…' : patient.status}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -132,7 +161,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               </div>
             ) : (
               <div className="space-y-3">
-                {documents.map(doc => (
+                {documents.map((doc, index) => (
                   <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <FileText className="h-5 w-5 text-gray-400" />
@@ -141,9 +170,24 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                         <p className="text-sm text-gray-500">{doc.documentType}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-500">
-                      {new Date(doc.uploadTimestamp).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => setViewerDocIndex(index)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        View
+                      </button>
+                      <p className="text-sm text-gray-500">
+                        {new Date(doc.uploadTimestamp).toLocaleDateString()}
+                      </p>
+                      <button
+                        onClick={() => deleteDocument(patientId, index)}
+                        className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                        title="Delete document"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -202,6 +246,12 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
         <DocumentUploadModal
           patientId={patientId}
           onClose={() => setShowUploadModal(false)}
+        />
+      )}
+      {viewerDocIndex !== null && (
+        <DocumentViewerModal
+          document={documents[viewerDocIndex]}
+          onClose={() => setViewerDocIndex(null)}
         />
       )}
     </div>
