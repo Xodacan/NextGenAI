@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Search, Filter } from 'lucide-react';
-import { useData } from '../contexts/DataContext';
+import { useData, formatOccupant } from '../contexts/DataContext';
 import AddPatientModal from './AddPatientModal';
 
 interface PatientListProps {
@@ -97,7 +97,7 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {patient.roomNumber}
+                    {formatOccupant(patient)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                     {new Date(patient.admissionDate).toLocaleDateString()}

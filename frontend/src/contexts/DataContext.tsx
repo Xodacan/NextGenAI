@@ -6,9 +6,18 @@ export interface Patient {
   lastName: string;
   dateOfBirth: string;
   admissionDate: string;
-  roomNumber: string;
+  occupantType: 'Room' | 'Bed' | 'ER Patient';
+  occupantValue: string;
   status: 'Active' | 'Pending Discharge' | 'Discharged';
 }
+
+// Helper function to format occupant display
+export const formatOccupant = (patient: Patient): string => {
+  if (patient.occupantType === 'ER Patient') {
+    return 'ER Patient';
+  }
+  return `${patient.occupantType} ${patient.occupantValue}`;
+};
 
 export interface ClinicalDocument {
   id: string;
@@ -60,7 +69,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         lastName: 'Doe',
         dateOfBirth: '1965-03-15',
         admissionDate: '2024-01-15',
-        roomNumber: 'A-204',
+        occupantType: 'Room',
+        occupantValue: 'A-204',
         status: 'Active'
       },
       {
@@ -69,7 +79,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         lastName: 'Davis',
         dateOfBirth: '1978-11-22',
         admissionDate: '2024-01-18',
-        roomNumber: 'B-156',
+        occupantType: 'Bed',
+        occupantValue: 'B-156',
         status: 'Pending Discharge'
       }
     ]);

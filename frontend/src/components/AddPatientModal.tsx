@@ -13,8 +13,9 @@ export default function AddPatientModal({ onClose }: AddPatientModalProps) {
     lastName: '',
     dateOfBirth: '',
     admissionDate: '',
-    roomNumber: '',
-    status: 'Active' as const
+    occupantType: 'Room' as 'Room' | 'Bed' | 'ER Patient',
+    occupantValue: '',
+    status: 'Active' as 'Active' | 'Pending Discharge' | 'Discharged'
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -104,17 +105,31 @@ export default function AddPatientModal({ onClose }: AddPatientModalProps) {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Room Number
+              Patient Occupant
             </label>
-            <input
-              type="text"
-              name="roomNumber"
-              required
-              value={formData.roomNumber}
-              onChange={handleChange}
-              placeholder="e.g., A-204"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                name="occupantType"
+                value={formData.occupantType}
+                onChange={handleChange}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="Room">Room No:</option>
+                <option value="Bed">Bed No:</option>
+                <option value="ER Patient">ER Patient:</option>
+              </select>
+              <input
+                type="text"
+                name="occupantValue"
+                required={formData.occupantType !== 'ER Patient'}
+                value={formData.occupantValue}
+                onChange={handleChange}
+                placeholder={formData.occupantType === 'ER Patient' ? 'None' : 
+                          formData.occupantType === 'Room' ? 'Room number' : 'Bed number'}
+                disabled={formData.occupantType === 'ER Patient'}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
+              />
+            </div>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">

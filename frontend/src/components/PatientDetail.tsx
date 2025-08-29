@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle } from 'lucide-react';
-import { useData } from '../contexts/DataContext';
+import { useData, formatOccupant } from '../contexts/DataContext';
 import DocumentUploadModal from './DocumentUploadModal';
 
 interface PatientDetailProps {
@@ -54,7 +54,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
             <h2 className="text-2xl font-bold text-gray-900">
               {patient.firstName} {patient.lastName}
             </h2>
-            <p className="text-gray-600">Room {patient.roomNumber}</p>
+            <p className="text-gray-600">{formatOccupant(patient)}</p>
           </div>
         </div>
         
