@@ -208,9 +208,18 @@ Summary: Chest X-ray shows clear lung fields. No evidence of pneumonia or pulmon
             
     except Exception as e:
         logger.error(f"Error in generate_discharge_summary: {str(e)}")
-        return Response({
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Check if it's a quota error
+        if "quota" in str(e).lower() or "429" in str(e):
+            return Response({
+                'error': 'OpenAI quota exceeded. Please try again later or contact support.',
+                'details': 'The AI service is currently unavailable due to quota limits.',
+                'suggestion': 'You can still create discharge summaries manually using the summary editor.'
+            }, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        else:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])

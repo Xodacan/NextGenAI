@@ -79,14 +79,13 @@ class Patient(models.Model):
     def __str__(self) -> str:
         return f"{self.first_name} {self.last_name} ({self.doctor_id})"
     
-    def get_occupant_display(self):
+    def get_occupant_display(self) -> str:
         """Get a human-readable display of the patient's location"""
-        if self.occupant_type == 'ER Patient':
-            return 'ER Patient'
-        elif self.occupant_type == 'Bed':
-            return f"Bed {self.occupant_value}" if self.occupant_value else "Bed"
-        elif self.occupant_type == 'Room':
-            return f"Room {self.occupant_value}" if self.occupant_value else "Room"
+        if self.occupant_type and self.occupant_value:
+            return f"{self.occupant_type} {self.occupant_value}"
+        elif self.occupant_type:
+            return self.occupant_type
         else:
-            return self.room_number or "Unknown"
+            return "Unknown"
+
 
