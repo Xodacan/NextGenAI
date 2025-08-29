@@ -32,8 +32,27 @@ class Patient(models.Model):
     last_name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     admission_date = models.DateField()
-    occupant_type = models.CharField(max_length=50, default='Room', help_text="Type of occupant (Room, Bed, etc.)")
-    occupant_value = models.CharField(max_length=50, blank=True, help_text="Value of occupant (Room number, Bed number, etc.)")
+    
+    # New occupant system to support Room, Bed, and ER Patient
+    occupant_type = models.CharField(
+        max_length=32,
+        choices=(
+            ('Room', 'Room'),
+            ('Bed', 'Bed'),
+            ('ER Patient', 'ER Patient'),
+        ),
+        default='Room',
+        help_text="Type of accommodation for the patient"
+    )
+    occupant_value = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Room number, bed number, or ER designation"
+    )
+    
+    # Legacy room_number field (kept for backward compatibility)
+    room_number = models.CharField(max_length=50, blank=True, null=True)
+    
     status = models.CharField(
         max_length=32,
         choices=(
@@ -68,4 +87,5 @@ class Patient(models.Model):
             return self.occupant_type
         else:
             return "Unknown"
+
 

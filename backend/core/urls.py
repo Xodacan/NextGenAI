@@ -8,4 +8,6 @@ urlpatterns = [
     path('patients/<int:pk>/', views.PatientRetrieveUpdateDeleteView.as_view(), name='patient_detail'),
     path('patients/<int:pk>/documents/', views.PatientAddDocumentView.as_view(), name='patient_add_document'),
     path('patients/<int:pk>/documents/<int:index>/', views.PatientDeleteDocumentView.as_view(), name='patient_delete_document'),
+    path('patients/<int:pk>/generate-summary/', views.GenerateSummaryView.as_view(), name='generate_summary'),
+    path('patients/<int:pk>/update-summary/', views.UpdateSummaryView.as_view(), name='update_summary'),
 ] 

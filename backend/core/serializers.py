@@ -1,37 +1,14 @@
 from rest_framework import serializers
-from .models import Doctor, Patient
-
-
-class DoctorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Doctor
-        fields = [
-            'id',
-            'firebase_uid',
-            'email',
-            'display_name',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+from .models import Patient
 
 
 class PatientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = [
-            'id',
-            'doctor_firebase_uid',
-            'first_name',
-            'last_name',
-            'date_of_birth',
-            'admission_date',
-            'occupant_type',
-            'occupant_value',
-            'status',
-            'documents',
-            'created_at',
-            'updated_at',
+            'id', 'first_name', 'last_name', 'date_of_birth', 'admission_date', 
+            'occupant_type', 'occupant_value', 'room_number', 'status', 'documents', 
+            'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

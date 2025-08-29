@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Save, CheckCircle, Clock, Edit3, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getIdToken } from '../firebase/auth';
 
@@ -10,19 +11,33 @@ interface SummaryEditorProps {
 }
 
 export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps) {
-  const { summaries, updateSummary, patients, refreshSummary } = useData();
+  const { summaries, updateSummary, patients, refreshSummaries } = useData();
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [content, setContent] = useState('');
-  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
   const summary = summaries.find(s => s.id === summaryId);
   const patient = summary ? patients.find(p => p.id === summary.patientId) : null;
 
-  React.useEffect(() => {
+  // Initialize content when summary changes
+  useEffect(() => {
     if (summary) {
-      setContent(summary.finalContent || summary.generatedContent);
-      setIsEditing(summary.status === 'Draft');
+      // Prioritize finalContent (edited content) over generatedContent
+      const contentToShow = summary.finalContent || summary.generatedContent || '';
+      setContent(contentToShow);
+      
+      console.log('Summary loaded:', {
+        id: summary.id,
+        status: summary.status,
+        hasFinalContent: !!summary.finalContent,
+        hasGeneratedContent: !!summary.generatedContent,
+        contentLength: contentToShow.length,
+        finalContent: summary.finalContent?.substring(0, 100) + '...',
+        generatedContent: summary.generatedContent?.substring(0, 100) + '...',
+        contentStateSet: contentToShow
+      });
     }
   }, [summary]);
 
@@ -40,66 +55,68 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
     );
   }
 
-  const handleSave = () => {
-    updateSummary(summaryId, {
-      finalContent: content,
-      status: 'Pending Review'
-    });
-    setIsEditing(false);
-  };
+  const handleSave = async () => {
+    if (!content.trim()) {
+      alert('Summary content cannot be empty');
+      return;
+    }
 
-  const handleApprove = () => {
-    updateSummary(summaryId, {
-      status: 'Approved',
-      approvedBy: user?.id,
-      approvalTimestamp: new Date().toISOString()
+    console.log('Saving summary:', {
+      summaryId,
+      currentContent: content,
+      contentLength: content.length,
+      originalFinalContent: summary?.finalContent,
+      originalGeneratedContent: summary?.generatedContent,
+      summaryStatus: summary?.status
     });
-  };
 
-  const handleRegenerate = async () => {
-    if (!summary) return;
-    
-    setIsRegenerating(true);
+    setIsSaving(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/openai/discharge-summary/${summary.id}/regenerate/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await getIdToken()}`,
-        },
+      // Update the summary with new content and set status to Pending Review
+      await updateSummary(summaryId, {
+        finalContent: content,
+        status: 'Pending Review'
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to regenerate summary');
-      }
-
-      const data = await response.json();
       
-      if (data.success) {
-        // Refresh the summary data
-        await refreshSummary(summary.id);
-        alert('Summary regenerated successfully!');
-      }
+      console.log('Summary saved successfully with content:', content.substring(0, 100) + '...');
+      // Keep editing mode ON for Pending Review status
+      // This allows doctors to continue editing before finalizing
     } catch (error) {
-      console.error('Failed to regenerate summary:', error);
-      alert('Failed to regenerate summary. Please try again.');
+      console.error('Error saving summary:', error);
+      alert(`Failed to save summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setIsRegenerating(false);
+      setIsSaving(false);
     }
   };
 
-  const getStatusIcon = () => {
-    switch (summary.status) {
-      case 'Draft':
-        return <Clock className="h-5 w-5 text-yellow-500" />;
-      case 'Pending Review':
-        return <Edit3 className="h-5 w-5 text-blue-500" />;
-      case 'Approved':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      default:
-        return null;
+  const handleApprove = async () => {
+    setIsApproving(true);
+    try {
+      // Finalize the summary - make it non-editable
+      await updateSummary(summaryId, {
+        status: 'Approved',
+        approvedBy: user?.email || user?.fullName || 'Unknown',
+        approvalTimestamp: new Date().toISOString()
+      });
+      
+      console.log('Summary approved and finalized successfully');
+      setIsEditing(false); // Make it view-only after approval
+    } catch (error) {
+      console.error('Error approving summary:', error);
+      alert(`Failed to approve summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsApproving(false);
     }
   };
+
+  // Determine if editing is allowed based on status
+  const canEdit = summary?.status === 'Draft' || summary?.status === 'Pending Review';
+  
+  // Determine if editing is currently active
+  const isCurrentlyEditing = isEditing && canEdit;
+  
+  // Determine if summary is finalized (non-editable)
+  const isFinalized = summary?.status === 'Approved';
 
   return (
     <div className="space-y-6">
@@ -115,58 +132,69 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
             <h2 className="text-2xl font-bold text-gray-900">
               Discharge Summary - {patient.firstName} {patient.lastName}
             </h2>
-            <div className="flex items-center space-x-2 mt-1">
-              {getStatusIcon()}
-              <span className={`text-sm font-medium ${
-                summary.status === 'Draft' ? 'text-yellow-600' :
-                summary.status === 'Pending Review' ? 'text-blue-600' :
-                'text-green-600'
-              }`}>
-                {summary.status}
-              </span>
+            {/* Status Display */}
+            <div className="flex items-center space-x-2">
+              {summary?.status === 'Draft' && (
+                <>
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                  <span className="text-sm text-yellow-600">Draft</span>
+                </>
+              )}
+              {summary?.status === 'Pending Review' && (
+                <>
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-sm text-blue-600">Pending Review</span>
+                </>
+              )}
+              {summary?.status === 'Approved' && (
+                <>
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-green-600">Approved</span>
+                </>
+              )}
             </div>
           </div>
         </div>
         
+        {/* Action Buttons */}
         <div className="flex items-center space-x-3">
-          {summary.status === 'Draft' && (
-            <button
-              onClick={() => setIsEditing(!isEditing)}
-              className="inline-flex items-center px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <Edit3 className="h-4 w-4 mr-2" />
-              {isEditing ? 'Cancel Edit' : 'Edit'}
-            </button>
+          {!isFinalized && (
+            <>
+              {!isCurrentlyEditing ? (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  {summary?.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'}
+                </button>
+              ) : (
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+              )}
+              
+              {summary?.status === 'Pending Review' && (
+                <button
+                  onClick={handleApprove}
+                  disabled={isApproving}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                >
+                  {isApproving ? 'Finalizing...' : 'Approve & Finalize'}
+                </button>
+              )}
+            </>
           )}
           
-          {isEditing && (
+          {isCurrentlyEditing && (
             <button
-              onClick={handleSave}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={() => setIsEditing(false)}
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
             >
-              <Save className="h-4 w-4 mr-2" />
-              Save Changes
-            </button>
-          )}
-          
-          {summary.status === 'Draft' && (
-            <button
-              onClick={handleRegenerate}
-              disabled={isRegenerating}
-              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${isRegenerating ? 'animate-spin' : ''}`} />
-              {isRegenerating ? 'Regenerating...' : 'Regenerate Summary'}
-            </button>
-          )}
-          
-          {summary.status === 'Pending Review' && user?.role === 'Doctor' && (
-            <button
-              onClick={handleApprove}
-              className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-            >
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Approve & Finalize
+              Cancel
             </button>
           )}
         </div>
@@ -181,18 +209,17 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
         </div>
         
         <div className="p-6">
-          {isEditing ? (
+          {isCurrentlyEditing ? (
             <textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              rows={20}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-              placeholder="Enter discharge summary content..."
+              className="w-full h-64 p-4 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+              placeholder="Enter or edit the discharge summary..."
             />
           ) : (
-            <div className="prose max-w-none">
-              <pre className="whitespace-pre-wrap font-sans text-sm text-gray-900 leading-relaxed">
-                {content}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <pre className="whitespace-pre-wrap text-sm text-gray-700 font-mono">
+                {content || 'No summary content available.'}
               </pre>
             </div>
           )}
@@ -229,6 +256,22 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
           <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p className="text-sm text-yellow-800">
               <strong>Note:</strong> This summary was generated by AI and requires clinical review and approval before finalization.
+            </p>
+          </div>
+        )}
+        
+        {summary.status === 'Pending Review' && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>Note:</strong> This summary has been reviewed and is pending final approval. Make any final edits before approving.
+            </p>
+          </div>
+        )}
+        
+        {summary.status === 'Approved' && (
+          <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <p className="text-sm text-green-800">
+              <strong>Note:</strong> This summary has been approved and finalized. It is now view-only and cannot be edited.
             </p>
           </div>
         )}
