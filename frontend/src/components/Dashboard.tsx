@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import { Users, FileText, ClipboardList, Activity, TrendingUp } from 'lucide-react';
+import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings } from 'lucide-react';
+import UserSettings from './UserSettings';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { patients, documents, summaries } = useData();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const hasAnyData = patients.length > 0 || documents.length > 0 || summaries.length > 0;
 
@@ -61,16 +63,27 @@ export default function Dashboard() {
 
   return (
     <div className="p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome back, {(() => {
-          const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-          if (!user) return 'Doctor';
-          if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
-          // Derive name from email before '@' and capitalize first letter
-          const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
-          return capitalize(nameFromEmail);
-        })()}!</h1>
-        <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Welcome back, {(() => {
+            const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+            if (!user) return 'Doctor';
+            if (user.fullName && user.fullName !== 'Unknown User') return user.fullName;
+            // Derive name from email before '@' and capitalize first letter
+            const nameFromEmail = user.email?.split('@')[0] || 'Doctor';
+            return capitalize(nameFromEmail);
+          })()}!</h1>
+          <p className="text-gray-600 mt-2">Here's what's happening with your patients today.</p>
+        </div>
+        
+        {/* Settings Button */}
+        <button
+          onClick={() => setIsSettingsOpen(true)}
+          className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+        >
+          <Settings className="h-5 w-5 text-gray-600" />
+          <span className="text-sm font-medium text-gray-700">Settings</span>
+        </button>
       </div>
 
       {/* Stats Grid */}
@@ -146,6 +159,12 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* User Settings Modal */}
+      <UserSettings 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </div>
   );
 }

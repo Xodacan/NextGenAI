@@ -4,6 +4,11 @@ from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework import generics
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
+from django.conf import settings
+import os
 
 from .models import Patient
 from .serializers import PatientSerializer
@@ -67,6 +72,7 @@ class PatientRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
 class PatientAddDocumentView(APIView):
     authentication_classes = [FirebaseAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, pk):
         try:
@@ -74,12 +80,27 @@ class PatientAddDocumentView(APIView):
         except Patient.DoesNotExist:
             return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        document = request.data
-        if not isinstance(document, dict):
-            return Response({'detail': 'Document payload must be an object.'}, status=status.HTTP_400_BAD_REQUEST)
+        # If a file is provided, save it to media and store a URL
+        upload_file = request.FILES.get('file')
+        documentType = request.data.get('documentType')
+        fileName = request.data.get('fileName') or (upload_file.name if upload_file else None)
+        practitionerId = request.data.get('practitionerId')
+        uploadTimestamp = request.data.get('uploadTimestamp') or None
+
+        doc_entry = {
+            'documentType': documentType or '',
+            'fileName': fileName or '',
+            'practitionerId': practitionerId or '',
+            'uploadTimestamp': uploadTimestamp or '',
+        }
+
+        if upload_file:
+            folder = os.path.join('patients', str(patient.id))
+            path = default_storage.save(os.path.join(folder, upload_file.name), ContentFile(upload_file.read()))
+            doc_entry['url'] = settings.MEDIA_URL + path
 
         docs = list(patient.documents or [])
-        docs.append(document)
+        docs.append(doc_entry)
         patient.documents = docs
         patient.save(update_fields=['documents', 'updated_at'])
         return Response({'documents': patient.documents}, status=status.HTTP_200_OK)
