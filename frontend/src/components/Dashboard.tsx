@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { useAuth } from '../contexts/MockAuthContext';
+import React, { useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings } from 'lucide-react';
 import UserSettings from './UserSettings';
