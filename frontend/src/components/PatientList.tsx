@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, Trash2 } from 'lucide-react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import AddPatientModal from './AddPatientModal';
 
@@ -8,10 +8,11 @@ interface PatientListProps {
 }
 
 export default function PatientList({ onSelectPatient }: PatientListProps) {
-  const { patients } = useData();
+  const { patients, deletePatient } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
   const filteredPatients = patients.filter(patient => {
     const matchesSearch = `${patient.firstName} ${patient.lastName}`
@@ -20,6 +21,21 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
     const matchesStatus = statusFilter === 'All' || patient.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const handleDeletePatient = async (patientId: string, patientName: string) => {
+    if (window.confirm(`Are you sure you want to delete ${patientName}? This will also delete all associated documents and summaries. This action cannot be undone.`)) {
+      try {
+        setDeletingPatientId(patientId);
+        await deletePatient(patientId);
+        console.log(`Patient ${patientName} deleted successfully`);
+      } catch (error) {
+        console.error('Error deleting patient:', error);
+        alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      } finally {
+        setDeletingPatientId(null);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -114,12 +130,22 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <button
-                      onClick={() => onSelectPatient(patient.id)}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      View Details
-                    </button>
+                    <div className="flex items-center space-x-3">
+                      <button
+                        onClick={() => onSelectPatient(patient.id)}
+                        className="text-blue-600 hover:text-blue-900"
+                      >
+                        View Details
+                      </button>
+                      <button
+                        onClick={() => handleDeletePatient(patient.id, `${patient.firstName} ${patient.lastName}`)}
+                        disabled={deletingPatientId === patient.id}
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        title="Delete patient"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
