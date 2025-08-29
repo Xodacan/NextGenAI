@@ -23,6 +23,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('core.urls')),
     path('api/auth/', include('firebase_auth.urls')),
+    path('api/alibaba/', include('alibaba_cloud.urls')),
 ]
 
 if settings.DEBUG:
