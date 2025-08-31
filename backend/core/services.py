@@ -452,6 +452,8 @@ IMPORTANT: Replace all bracketed text with actual information extracted from the
             r'\{date_of_birth\}': '[EXTRACT DATE OF BIRTH FROM DOCUMENTS]',
             r'\{admission_date\}': '[EXTRACT ADMISSION DATE FROM DOCUMENTS]',
             r'\{room_number\}': '[EXTRACT ROOM/BED NUMBER FROM DOCUMENTS]',
+            r'\{occupant_type\}': '[EXTRACT OCCUPANT TYPE (Room/Bed/ER Patient) FROM DOCUMENTS]',
+            r'\{occupant_value\}': '[EXTRACT ROOM/BED NUMBER OR ER DESIGNATION FROM DOCUMENTS]',
             r'\{current_date\}': '[CURRENT DATE]',
             r'\{primary_diagnosis\}': '[EXTRACT PRIMARY DIAGNOSIS FROM DOCUMENTS]',
             r'\{secondary_diagnoses\}': '[EXTRACT SECONDARY DIAGNOSES FROM DOCUMENTS]',
