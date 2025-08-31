@@ -95,15 +95,25 @@ class PatientRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
             # Delete associated summary files if they exist
             if patient.documents:
                 for doc in patient.documents:
-                    if doc.get('documentType') == 'Discharge Summary' and doc.get('url'):
+                    if doc.get('documentType') == 'Discharge Summary':
                         try:
-                            url_path = doc['url']
-                            if url_path.startswith('/media/'):
+                            # Delete from OSS if available
+                            if doc.get('oss_path'):
+                                from alibaba_cloud.services.oss_service import AlibabaOSSService
+                                oss_service = AlibabaOSSService()
+                                if oss_service.delete_document(doc['oss_path']):
+                                    print(f"Deleted summary file from OSS: {doc['oss_path']}")
+                                else:
+                                    print(f"Warning: Could not delete summary file from OSS: {doc['oss_path']}")
+                            
+                            # Also delete local file if it exists
+                            if doc.get('url') and doc['url'].startswith('/media/'):
+                                url_path = doc['url']
                                 file_path = url_path.replace('/media/', '')
                                 full_path = os.path.join(settings.MEDIA_ROOT, file_path)
                                 if os.path.exists(full_path):
                                     os.remove(full_path)
-                                    print(f"Deleted summary file: {full_path}")
+                                    print(f"Deleted local summary file: {full_path}")
                         except Exception as e:
                             print(f"Warning: Could not delete summary file: {e}")
             
@@ -143,6 +153,13 @@ class PatientAddDocumentView(APIView):
             for field in required_fields:
                 if field not in doc_entry:
                     return Response({'detail': f'Missing required field: {field}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update the URL to use backend proxy instead of direct OSS URL
+            if 'oss_path' in doc_entry and doc_entry['oss_path']:
+                # Create backend proxy URL for frontend access
+                doc_entry['url'] = f'/api/patients/{pk}/documents/{len(patient.documents or [])}/content/'
+                # Keep the original OSS URL for backend processing
+                doc_entry['oss_url'] = doc_entry.get('url', '')  # Store original URL if it exists
             
             docs = list(patient.documents or [])
             docs.append(doc_entry)
@@ -239,17 +256,20 @@ class GenerateSummaryView(APIView):
             # Generate summary using Ollama
             summary_content = OllamaService.generate_patient_summary(ai_ready_data, template_content)
             
-            # Create summary file
+            # Create summary file and upload to OSS
             patient_name = f"{patient.first_name}_{patient.last_name}"
-            summary_filename = OllamaService.create_summary_file(patient_name, summary_content)
+            doctor_id = request.user.firebase_uid
+            summary_result = OllamaService.create_summary_file(patient_name, summary_content, doctor_id, str(patient.id))
             
             # Add summary file to patient documents
             summary_doc = {
                 'documentType': 'Discharge Summary',
-                'fileName': summary_filename,
+                'fileName': summary_result['filename'],
                 'uploadTimestamp': timezone.now().isoformat(),
-                'url': f'/media/patients/summaries/{summary_filename}',
-                'summary': summary_content
+                'url': summary_result['url'],
+                'oss_path': summary_result['oss_path'],
+                'summary': summary_content,
+                'file_size': summary_result['file_size']
             }
             
             # Add to patient documents
@@ -259,18 +279,22 @@ class GenerateSummaryView(APIView):
             patient.save()
             
             summary_response = {
-                'message': 'Discharge summary generated successfully using Ollama',
+                'message': 'Discharge summary generated successfully using Ollama and stored in OSS',
                 'patientId': str(patient.id),
                 'summaryFile': {
-                    'filename': summary_filename,
+                    'filename': summary_result['filename'],
                     'content': summary_content[:500] + '...' if len(summary_content) > 500 else summary_content,
-                    'fullContent': summary_content
+                    'fullContent': summary_content,
+                    'oss_path': summary_result['oss_path'],
+                    'url': summary_result['url'],
+                    'file_size': summary_result['file_size']
                 },
                 'status': 'success',
                 'details': [
                     'Summary generated successfully using Ollama',
-                    'Summary file created and added to patient documents',
-                    'Summary available in summaries list section'
+                    'Summary file uploaded to Alibaba Cloud OSS',
+                    'Summary available in summaries list section',
+                    f'OSS Path: {summary_result["oss_path"]}' if summary_result['oss_path'] else 'Stored locally (OSS upload failed)'
                 ]
             }
             
@@ -281,6 +305,66 @@ class GenerateSummaryView(APIView):
                 'detail': 'Error generating summary with Ollama.',
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DocumentContentView(APIView):
+    authentication_classes = [FirebaseAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk, document_index):
+        """
+        Get document content from OSS and return it to the frontend.
+        This endpoint proxies OSS content to avoid CORS issues.
+        """
+        try:
+            patient = Patient.objects.get(pk=pk, doctor=request.user)
+        except Patient.DoesNotExist:
+            return Response({'detail': 'Patient not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            docs = patient.documents or []
+            if not isinstance(document_index, int) or document_index < 0 or document_index >= len(docs):
+                return Response({'detail': 'Invalid document index.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            document = docs[document_index]
+            
+            # Check if document has OSS path
+            if not document.get('oss_path'):
+                return Response({'detail': 'Document not found in OSS.'}, status=status.HTTP_404_NOT_FOUND)
+
+            # Import OSS service
+            from alibaba_cloud.services.oss_service import AlibabaOSSService
+            oss_service = AlibabaOSSService()
+            
+            # Get document content from OSS
+            try:
+                oss_response = oss_service.bucket.get_object(document['oss_path'])
+                content = oss_response.read()
+                
+                # Determine content type based on file extension
+                file_extension = document['fileName'].lower().split('.')[-1]
+                content_type = 'text/plain'
+                
+                if file_extension == 'pdf':
+                    content_type = 'application/pdf'
+                elif file_extension in ['doc', 'docx']:
+                    content_type = 'application/msword'
+                elif file_extension in ['jpg', 'jpeg']:
+                    content_type = 'image/jpeg'
+                elif file_extension == 'png':
+                    content_type = 'image/png'
+                
+                # Return content with appropriate headers
+                response = Response(content, content_type=content_type)
+                response['Content-Disposition'] = f'inline; filename="{document["fileName"]}"'
+                return response
+                
+            except Exception as e:
+                print(f"Error fetching document from OSS: {str(e)}")
+                return Response({'detail': 'Error fetching document content.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+        except Exception as e:
+            return Response({'detail': 'Error processing request.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class UpdateSummaryView(APIView):
@@ -299,7 +383,7 @@ class UpdateSummaryView(APIView):
         try:
             # Get the updated summary data
             final_content = request.data.get('finalContent')
-            status = request.data.get('status')
+            summary_status = request.data.get('status')
             approved_by = request.data.get('approvedBy')
             approval_timestamp = request.data.get('approvalTimestamp')
             
@@ -320,8 +404,8 @@ class UpdateSummaryView(APIView):
             # Update the summary document
             if final_content is not None:
                 summary_doc['finalContent'] = final_content
-            if status is not None:
-                summary_doc['status'] = status
+            if summary_status is not None:
+                summary_doc['status'] = summary_status
             if approved_by is not None:
                 summary_doc['approvedBy'] = approved_by
             if approval_timestamp is not None:
@@ -333,21 +417,55 @@ class UpdateSummaryView(APIView):
             patient.save()
             
             # Also update the summary file if finalContent is provided
-            if final_content and summary_doc.get('url'):
+            if final_content and summary_doc.get('oss_path'):
                 try:
-                    # Extract filename from URL
-                    url_path = summary_doc['url']
-                    if url_path.startswith('/media/'):
-                        file_path = url_path.replace('/media/', '')
-                        full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+                    # Update the file in OSS
+                    from alibaba_cloud.services.oss_service import AlibabaOSSService
+                    oss_service = AlibabaOSSService()
+                    
+                    # Convert content to bytes
+                    content_bytes = final_content.encode('utf-8')
+                    
+                    # Delete the old file and upload the new one
+                    if oss_service.delete_document(summary_doc['oss_path']):
+                        # Upload the updated content
+                        upload_result = oss_service.upload_medical_document(
+                            file_content=content_bytes,
+                            file_name=summary_doc['fileName'],
+                            doctor_id=request.user.firebase_uid,
+                            patient_id=str(patient.id),
+                            document_type="discharge_summaries"
+                        )
                         
-                        # Write the updated content to the file
-                        with open(full_path, 'w', encoding='utf-8') as f:
-                            f.write(final_content)
+                        # Update the document with new OSS information
+                        summary_doc['oss_path'] = upload_result['oss_path']
+                        summary_doc['url'] = upload_result['presigned_url']
+                        summary_doc['file_size'] = upload_result['file_size']
                         
-                        print(f"Updated summary file: {full_path}")
+                        # Save the updated document
+                        docs[summary_index] = summary_doc
+                        patient.documents = docs
+                        patient.save()
+                        
+                        print(f"Updated summary file in OSS: {upload_result['oss_path']}")
+                    else:
+                        print(f"Warning: Could not delete old summary file from OSS")
+                        
                 except Exception as e:
-                    print(f"Warning: Could not update summary file: {e}")
+                    print(f"Warning: Could not update summary file in OSS: {e}")
+                    # Fallback to local update if OSS fails
+                    if summary_doc.get('url') and summary_doc['url'].startswith('/media/'):
+                        try:
+                            url_path = summary_doc['url']
+                            file_path = url_path.replace('/media/', '')
+                            full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+                            
+                            with open(full_path, 'w', encoding='utf-8') as f:
+                                f.write(final_content)
+                            
+                            print(f"Fallback: Updated summary file locally: {full_path}")
+                        except Exception as fallback_error:
+                            print(f"Warning: Could not update summary file locally: {fallback_error}")
             
             return Response({
                 'message': 'Summary updated successfully',

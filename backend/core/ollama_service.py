@@ -191,7 +191,7 @@ REMEMBER: Fill in every field with actual patient information. No placeholder te
             summary = generate_discharge_summary_from_object(
                 patient_record=patient_info,
                 template_text=enhanced_template,
-                model_name="mistral",  # Can be configured
+                model_name="mistral",     # Using Mistral model
                 num_predict=2048,      # Increased for longer summaries
                 temperature=0.2,       # Lower temperature for more focused output
                 top_p=0.9
@@ -205,16 +205,18 @@ REMEMBER: Fill in every field with actual patient information. No placeholder te
             return f"Error generating summary: {str(e)}"
     
     @staticmethod
-    def create_summary_file(patient_name: str, summary_content: str) -> str:
+    def create_summary_file(patient_name: str, summary_content: str, doctor_id: str, patient_id: str) -> Dict[str, str]:
         """
-        Create a summary file and return the filename.
+        Create a summary file and upload it to Alibaba Cloud OSS.
         
         Args:
             patient_name: Name of the patient
             summary_content: Generated summary content
+            doctor_id: Doctor's Firebase UID
+            patient_id: Patient ID
             
         Returns:
-            Filename of the created summary
+            Dict containing filename and OSS information
         """
         try:
             # Clean patient name for filename
@@ -224,21 +226,60 @@ REMEMBER: Fill in every field with actual patient information. No placeholder te
             # Create filename
             filename = f"Discharge_summary_{clean_name}.txt"
             
-            # Create the file in media/patients/summaries/
-            from django.conf import settings
-            import os
+            # Import OSS service
+            from alibaba_cloud.services.oss_service import AlibabaOSSService
             
-            summaries_dir = os.path.join(settings.MEDIA_ROOT, 'patients', 'summaries')
-            os.makedirs(summaries_dir, exist_ok=True)
+            # Initialize OSS service
+            oss_service = AlibabaOSSService()
             
-            file_path = os.path.join(summaries_dir, filename)
+            # Convert summary content to bytes
+            summary_bytes = summary_content.encode('utf-8')
             
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(summary_content)
+            # Upload to OSS using the existing structure
+            upload_result = oss_service.upload_medical_document(
+                file_content=summary_bytes,
+                file_name=filename,
+                doctor_id=doctor_id,
+                patient_id=patient_id,
+                document_type="discharge_summaries"
+            )
             
-            logger.info(f"Created summary file: {filename}")
-            return filename
+            logger.info(f"Successfully uploaded summary to OSS: {upload_result['oss_path']}")
+            
+            return {
+                'filename': filename,
+                'oss_path': upload_result['oss_path'],
+                'url': upload_result['presigned_url'],
+                'file_size': upload_result['file_size']
+            }
             
         except Exception as e:
-            logger.error(f"Error creating summary file: {str(e)}")
-            return f"summary_{patient_name.replace(' ', '_')}.txt"
+            logger.error(f"Error uploading summary to OSS: {str(e)}")
+            # Fallback to local storage if OSS fails
+            try:
+                from django.conf import settings
+                import os
+                
+                summaries_dir = os.path.join(settings.MEDIA_ROOT, 'summaries')
+                os.makedirs(summaries_dir, exist_ok=True)
+                
+                file_path = os.path.join(summaries_dir, filename)
+                
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(summary_content)
+                
+                logger.warning(f"Fallback: Created summary file locally: {filename}")
+                return {
+                    'filename': filename,
+                    'oss_path': None,
+                    'url': f'/media/summaries/{filename}',
+                    'file_size': len(summary_content.encode('utf-8'))
+                }
+            except Exception as fallback_error:
+                logger.error(f"Fallback local storage also failed: {str(fallback_error)}")
+                return {
+                    'filename': filename,
+                    'oss_path': None,
+                    'url': None,
+                    'file_size': 0
+                }

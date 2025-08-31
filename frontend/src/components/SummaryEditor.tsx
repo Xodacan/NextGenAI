@@ -79,6 +79,8 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
       });
       
       console.log('Summary saved successfully with content:', content.substring(0, 100) + '...');
+      // Show success message
+      alert('Summary saved successfully!');
       // Keep editing mode ON for Pending Review status
       // This allows doctors to continue editing before finalizing
     } catch (error) {
@@ -100,6 +102,8 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
       });
       
       console.log('Summary approved and finalized successfully');
+      // Show success message
+      alert('Summary approved successfully!');
       setIsEditing(false); // Make it view-only after approval
     } catch (error) {
       console.error('Error approving summary:', error);
