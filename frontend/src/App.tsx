@@ -12,6 +12,7 @@ import DocumentsPage from './pages/DocumentsPage';
 import DocumentsGlobalPage from './pages/DocumentsGlobalPage';
 import SummaryEditorPage from './pages/SummaryEditorPage';
 import SummariesPage from './pages/SummariesPage';
+import InstitutionPage from './pages/InstitutionPage';
 
 function App() {
   return (
@@ -26,6 +27,16 @@ function App() {
                 <ProtectedRoute>
                   <Layout>
                     <DashboardPage />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/institution"
+              element={
+                <ProtectedRoute>
+                  <Layout>
+                    <InstitutionPage />
                   </Layout>
                 </ProtectedRoute>
               }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Settings, Mail, Lock, Building, User, X } from 'lucide-react';
+import { Settings, Mail, Lock, Building, User, X, Building2, MapPin, Phone } from 'lucide-react';
 import { getUserProfile, updateUserProfile, changePassword, changeEmail } from '../services/userService';
 
 interface UserSettingsProps {
@@ -9,8 +9,8 @@ interface UserSettingsProps {
 }
 
 export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'profile' | 'email' | 'password'>('profile');
+  const { user, institution } = useAuth();
+  const [activeTab, setActiveTab] = useState<'profile' | 'institution' | 'email' | 'password'>('profile');
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -134,6 +134,7 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
+    { id: 'institution', label: 'Institution', icon: Building2 },
     { id: 'email', label: 'Email', icon: Mail },
     { id: 'password', label: 'Password', icon: Lock }
   ];
@@ -225,6 +226,87 @@ export default function UserSettings({ isOpen, onClose }: UserSettingsProps) {
                 {isLoading ? 'Updating...' : 'Update Profile'}
               </button>
             </form>
+          )}
+
+          {/* Institution Tab */}
+          {activeTab === 'institution' && (
+            <div className="space-y-6">
+              {institution ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                  <div className="flex items-center space-x-4 mb-4">
+                    {institution.logo ? (
+                      <img 
+                        src={institution.logo} 
+                        alt={institution.name}
+                        className="h-16 w-16 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-16 w-16 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Building2 className="h-8 w-8 text-blue-600" />
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900">{institution.name}</h3>
+                      <p className="text-blue-600 font-medium">{institution.type}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div className="flex items-start space-x-2">
+                        <MapPin className="h-4 w-4 text-gray-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Address</p>
+                          <p className="text-sm text-gray-600">{institution.address}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Phone className="h-4 w-4 text-gray-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Phone</p>
+                          <p className="text-sm text-gray-600">{institution.phone}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <Mail className="h-4 w-4 text-gray-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Email</p>
+                          <p className="text-sm text-gray-600">{institution.email}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center space-x-2">
+                        <Building2 className="h-4 w-4 text-gray-500" />
+                        <div>
+                          <p className="text-sm font-medium text-gray-700">Established</p>
+                          <p className="text-sm text-gray-600">{institution.established}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Building2 className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Institution Assigned</h3>
+                  <p className="text-gray-500">
+                    Contact your administrator to be assigned to an institution.
+                  </p>
+                </div>
+              )}
+              
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Institution Access</h4>
+                <p className="text-sm text-gray-600">
+                  Your access is limited to patients and data within your assigned institution. 
+                  To change your institution assignment, please contact your system administrator.
+                </p>
+              </div>
+            </div>
           )}
 
           {/* Email Tab */}

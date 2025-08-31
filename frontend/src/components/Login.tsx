@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Mail, AlertCircle } from 'lucide-react';
+import { Lock, Mail, AlertCircle, Building2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedInstitution, setSelectedInstitution] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login, user } = useAuth();
   const navigate = useNavigate();
+
+  // Mock institutions for login selection
+  const institutions = [
+    { id: 'mgh', name: 'Massachusetts General Hospital', domain: 'mgh.harvard.edu' },
+    { id: 'mayo', name: 'Mayo Clinic', domain: 'mayo.edu' },
+    { id: 'jhh', name: 'Johns Hopkins Hospital', domain: 'jhmi.edu' },
+    { id: 'cleveland', name: 'Cleveland Clinic', domain: 'ccf.org' },
+    { id: 'stanford', name: 'Stanford Health Care', domain: 'stanfordhealthcare.org' }
+  ];
 
   // Redirect if user is already logged in
   useEffect(() => {
@@ -18,9 +28,28 @@ export default function Login() {
     }
   }, [user, navigate]);
 
+  // Auto-select institution based on email domain
+  useEffect(() => {
+    if (email.includes('@')) {
+      const domain = email.split('@')[1];
+      const matchingInstitution = institutions.find(inst => 
+        domain.includes(inst.domain.split('.')[0])
+      );
+      if (matchingInstitution) {
+        setSelectedInstitution(matchingInstitution.id);
+      }
+    }
+  }, [email]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (!selectedInstitution) {
+      setError('Please select your institution');
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
@@ -38,8 +67,6 @@ export default function Login() {
     }
   };
 
-
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center px-4">
       <div className="max-w-md w-full space-y-8">
@@ -56,6 +83,31 @@ export default function Login() {
         <div className="bg-white py-8 px-6 shadow-lg rounded-xl">
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
+              <label htmlFor="institution" className="block text-sm font-medium text-gray-700 mb-2">
+                Select Your Institution
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Building2 className="h-5 w-5 text-gray-400" />
+                </div>
+                <select
+                  id="institution"
+                  value={selectedInstitution}
+                  onChange={(e) => setSelectedInstitution(e.target.value)}
+                  className="appearance-none relative block w-full pl-10 pr-8 py-3 border border-gray-300 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                >
+                  <option value="">Choose your hospital...</option>
+                  {institutions.map(institution => (
+                    <option key={institution.id} value={institution.id}>
+                      {institution.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
               <label htmlFor="email" className="sr-only">
                 Email address
               </label>
@@ -71,9 +123,14 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="appearance-none relative block w-full pl-10 pr-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:z-10"
-                  placeholder="Email address"
+                  placeholder="doctor@hospital.com"
                 />
               </div>
+              {selectedInstitution && (
+                <p className="mt-1 text-xs text-blue-600">
+                  Logging into {institutions.find(i => i.id === selectedInstitution)?.name}
+                </p>
+              )}
             </div>
 
             <div>
@@ -111,9 +168,26 @@ export default function Login() {
             >
               {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
-
-
           </form>
+          
+          {/* Demo Credentials */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <p className="text-xs text-gray-500 text-center mb-3">Demo Credentials:</p>
+            <div className="space-y-2 text-xs">
+              <div className="bg-gray-50 p-2 rounded">
+                <p className="font-medium text-gray-700">Massachusetts General Hospital</p>
+                <p className="text-gray-600">doctor@mgh.harvard.edu / demo123</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded">
+                <p className="font-medium text-gray-700">Mayo Clinic</p>
+                <p className="text-gray-600">doctor@mayo.edu / demo123</p>
+              </div>
+              <div className="bg-gray-50 p-2 rounded">
+                <p className="font-medium text-gray-700">Johns Hopkins Hospital</p>
+                <p className="text-gray-600">doctor@jhmi.edu / demo123</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

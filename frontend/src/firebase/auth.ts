@@ -11,6 +11,7 @@ export interface User {
   id: string;
   fullName: string;
   displayName?: string; // Backend display_name field
+  institution?: string; // Institution name from backend
   role: 'Doctor' | 'Nurse' | 'Admin';
   email: string;
   picture?: string;

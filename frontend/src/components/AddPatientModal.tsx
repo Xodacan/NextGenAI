@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Building2 } from 'lucide-react';
 import { useData } from '../contexts/DataContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AddPatientModalProps {
   onClose: () => void;
@@ -8,6 +9,7 @@ interface AddPatientModalProps {
 
 export default function AddPatientModal({ onClose }: AddPatientModalProps) {
   const { addPatient } = useData();
+  const { institution } = useAuth();
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -43,6 +45,18 @@ export default function AddPatientModal({ onClose }: AddPatientModalProps) {
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Institution Context */}
+        {institution && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center space-x-2">
+              <Building2 className="h-4 w-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">
+                Adding patient to {institution.name}
+              </span>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
