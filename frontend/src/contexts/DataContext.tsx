@@ -309,33 +309,58 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   };
 
   const deleteDocument = async (patientId: string, docIndex: number) => {
-    const token = await getIdToken();
-    if (!token) return;
-    const res = await fetch(`http://localhost:8000/api/patients/${patientId}/documents/${docIndex}/`, {
-      method: 'DELETE',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const docs = data.documents as any[];
-      const projected: ClinicalDocument[] = docs.map((d: any, idx: number) => ({
-        id: `${patientId}-${idx + 1}`,
-        patientId,
-        practitionerId: d.practitionerId ?? '',
-        documentType: d.documentType ?? '',
-        fileName: d.fileName ?? '',
-        uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
-        summary: d.summary,
-        url: d.url,
-        status: d.status,
-        finalContent: d.finalContent,
-      }));
-      setDocuments(prev => {
-        const filtered = prev.filter(d => d.patientId !== patientId);
-        return [...filtered, ...projected];
+    try {
+      console.log(`🗑️  Attempting to delete document ${docIndex} from patient ${patientId}`);
+      
+      const token = await getIdToken();
+      if (!token) {
+        console.error('❌ No authentication token available');
+        return;
+      }
+      
+      const url = `http://localhost:8000/api/patients/${patientId}/documents/${docIndex}/`;
+      console.log(`🔗 DELETE request to: ${url}`);
+      
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
       });
+      
+      console.log(`📡 Response status: ${res.status} ${res.statusText}`);
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log('✅ Delete successful, response:', data);
+        
+        const docs = data.documents as any[];
+        const projected: ClinicalDocument[] = docs.map((d: any, idx: number) => ({
+          id: `${patientId}-${idx + 1}`,
+          patientId,
+          practitionerId: d.practitionerId ?? '',
+          documentType: d.documentType ?? '',
+          fileName: d.fileName ?? '',
+          uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
+          summary: d.summary,
+          url: d.url,
+          status: d.status,
+          finalContent: d.finalContent,
+        }));
+        
+        setDocuments(prev => {
+          const filtered = prev.filter(d => d.patientId !== patientId);
+          return [...filtered, ...projected];
+        });
+        
+        console.log('✅ Documents state updated successfully');
+      } else {
+        const errorText = await res.text();
+        console.error(`❌ Delete failed: ${res.status} ${res.statusText}`);
+        console.error(`❌ Error details: ${errorText}`);
+      }
+    } catch (error) {
+      console.error('❌ Error in deleteDocument:', error);
     }
   };
 
@@ -605,65 +630,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         const allSummaries: DischargeSummary[] = [];
-        
-        data.forEach((p: any) => {
-          const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
-          
-          // Find the discharge summary document for this patient
-          const dischargeSummaryDoc = docs.find(d => d.documentType === 'Discharge Summary' && d.summary);
-          
-          if (dischargeSummaryDoc) {
-            const summaryId = `summary-${p.id}`;
-            
-            // Check if we have local changes for this summary
-            const existingSummary = summaries.find(s => s.id === summaryId);
-            
-            allSummaries.push({
-              id: summaryId,
-              patientId: String(p.id),
-              // Preserve local status if it exists, otherwise use backend status
-              status: existingSummary?.status || dischargeSummaryDoc.status || 'Draft',
-              generatedContent: dischargeSummaryDoc.summary,
-              // Preserve local finalContent if it exists, otherwise use backend finalContent
-              finalContent: existingSummary?.finalContent || dischargeSummaryDoc.finalContent || dischargeSummaryDoc.summary,
-              createdTimestamp: dischargeSummaryDoc.uploadTimestamp || new Date().toISOString(),
-              // Preserve local approval data if it exists
-              approvedBy: existingSummary?.approvedBy || dischargeSummaryDoc.approvedBy,
-              approvalTimestamp: existingSummary?.approvalTimestamp || dischargeSummaryDoc.approvalTimestamp
-            });
-          }
-          
-          docs.forEach((d: any, idx: number) => {
-            const docId = `${p.id}-${idx + 1}`;
-            
-            // Check if we have local changes for this document
-            const existingDoc = documents.find(doc => doc.id === docId);
-            
-            allDocs.push({
-              id: docId,
-              patientId: String(p.id),
-              practitionerId: d.practitionerId ?? '',
-              documentType: d.documentType ?? '',
-              fileName: d.fileName ?? '',
-              uploadTimestamp: d.uploadTimestamp ?? new Date().toISOString(),
-              summary: d.summary,
-              // Preserve local changes if they exist
-              url: existingDoc?.url || d.url,
-              status: existingDoc?.status || d.status,
-              finalContent: existingDoc?.finalContent || d.finalContent,
-              approvedBy: existingDoc?.approvedBy || d.approvedBy,
-              approvalTimestamp: existingDoc?.approvalTimestamp || d.approvalTimestamp
-            });
-          });
-        });
-        
-        // Update summaries state
-        setSummaries(allSummaries);
-        
-        // Also update documents to ensure consistency
         const allDocs: ClinicalDocument[] = [];
+        
+        // Process each patient's documents and summaries in a single loop
         data.forEach((p: any) => {
           const docs: any[] = Array.isArray(p.documents) ? p.documents : [];
+          
+          // Process documents
           docs.forEach((d: any, idx: number) => {
             const docId = `${p.id}-${idx + 1}`;
             
@@ -688,7 +661,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             
             // Check if this document is a discharge summary and add to summaries
             if (d.documentType === 'Discharge Summary' && d.summary) {
-              const summaryId = `summary-${p.id}-${idx + 1}`;
+              const summaryId = `summary-${p.id}`;
               
               // Check if we have local changes for this summary
               const existingSummary = summaries.find(s => s.id === summaryId);
@@ -709,6 +682,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
             }
           });
         });
+        
+        // Update both states
+        setSummaries(allSummaries);
         setDocuments(allDocs);
         
         console.log(`Refreshed ${allSummaries.length} summaries and ${allDocs.length} documents with local changes preserved`);

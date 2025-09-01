@@ -1,6 +1,158 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Download } from 'lucide-react';
 import { ClinicalDocument } from '../contexts/DataContext';
+import { useAuth } from '../contexts/AuthContext';
+
+// Component for displaying authenticated PDFs and HTML files
+const AuthenticatedIframe: React.FC<{
+  url: string;
+  fileName: string;
+  getIdToken: () => Promise<string | null>;
+}> = ({ url, fileName, getIdToken }) => {
+  const [iframeSrc, setIframeSrc] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isPdf, setIsPdf] = useState(false);
+
+  useEffect(() => {
+    const loadAuthenticatedContent = async () => {
+      try {
+        console.log(`🔄 Loading authenticated content for: ${fileName}`);
+        console.log(`🔗 URL: ${url}`);
+        
+        const token = await getIdToken();
+        if (!token) {
+          console.error('❌ No authentication token available');
+          setError('No authentication token available');
+          setIsLoading(false);
+          return;
+        }
+
+        // Check if it's a PDF file
+        const fileExt = fileName.toLowerCase().split('.').pop();
+        setIsPdf(fileExt === 'pdf');
+        console.log(`📄 File extension: ${fileExt}, isPdf: ${fileExt === 'pdf'}`);
+
+        const fullUrl = `http://localhost:8000${url}`;
+        console.log(`🌐 Full URL: ${fullUrl}`);
+
+        // Create a blob URL from the authenticated response
+        const response = await fetch(fullUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        console.log(`📡 Response status: ${response.status} ${response.statusText}`);
+        console.log(`📋 Response headers:`, Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const blob = await response.blob();
+        console.log(`📦 Blob created: ${blob.size} bytes, type: ${blob.type}`);
+        
+        const blobUrl = URL.createObjectURL(blob);
+        console.log(`🔗 Blob URL created: ${blobUrl}`);
+        
+        setIframeSrc(blobUrl);
+        setIsLoading(false);
+        console.log('✅ Content loaded successfully');
+      } catch (err) {
+        console.error('❌ Error loading authenticated content:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load file');
+        setIsLoading(false);
+      }
+    };
+
+    loadAuthenticatedContent();
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (iframeSrc) {
+        URL.revokeObjectURL(iframeSrc);
+      }
+    };
+  }, [url, getIdToken]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <div className="text-gray-500">Loading {fileName}...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <div className="text-red-500">Error: {error}</div>
+      </div>
+    );
+  }
+
+  if (!iframeSrc) {
+    return (
+      <div className="flex items-center justify-center h-32">
+        <div className="text-gray-500">No content available</div>
+      </div>
+    );
+  }
+
+  // For PDFs, use object tag instead of iframe for better compatibility
+  if (isPdf) {
+    return (
+      <div className="w-full h-full">
+        {/* Try object tag first */}
+        <object
+          data={iframeSrc}
+          type="application/pdf"
+          className="w-full h-full"
+        >
+          {/* Fallback to iframe if object fails */}
+          <iframe
+            src={iframeSrc}
+            title={fileName}
+            className="w-full h-full border-0"
+            style={{ minHeight: '600px' }}
+          >
+            {/* Final fallback */}
+            <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+              <p className="text-gray-600 mb-4">PDF cannot be displayed in the browser.</p>
+              <div className="space-x-2">
+                <a 
+                  href={iframeSrc} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Open PDF in New Tab
+                </a>
+                <a 
+                  href={iframeSrc} 
+                  download={fileName}
+                  className="inline-flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                >
+                  Download PDF
+                </a>
+              </div>
+            </div>
+          </iframe>
+        </object>
+      </div>
+    );
+  }
+
+  // For HTML files, use iframe
+  return (
+    <iframe
+      src={iframeSrc}
+      title={fileName}
+      className="w-full h-full border-0"
+    />
+  );
+};
 
 interface DocumentViewerModalProps {
   document: ClinicalDocument;
@@ -8,6 +160,7 @@ interface DocumentViewerModalProps {
 }
 
 export default function DocumentViewerModal({ document, onClose }: DocumentViewerModalProps) {
+  const { getIdToken } = useAuth();
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoadingText, setIsLoadingText] = useState(false);
   const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
@@ -19,17 +172,24 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
 
   // Helper function to check if file is text-based
   const isTextFile = (fileName: string): boolean => {
+    // First try viewerStrategy, fallback to file extension
+    if (document.viewerStrategy === 'text') return true;
     const ext = getFileExtension(fileName);
-    return ['txt', 'md', 'csv', 'json', 'xml', 'html', 'css', 'js', 'log'].includes(ext);
+    // Include PDFs since they're now converted to text on the backend
+    return ['txt', 'md', 'csv', 'json', 'xml', 'html', 'css', 'js', 'log', 'pdf'].includes(ext);
   };
 
   // Helper function to check if file is PDF
   const isPdfFile = (fileName: string): boolean => {
+    // First try viewerStrategy, fallback to file extension
+    if (document.viewerStrategy === 'pdf') return true;
     return getFileExtension(fileName) === 'pdf';
   };
 
   // Helper function to check if file can be displayed in iframe
   const canDisplayInIframe = (fileName: string): boolean => {
+    // First try viewerStrategy, fallback to file extension
+    if (document.viewerStrategy === 'pdf' || document.viewerStrategy === 'html') return true;
     const ext = getFileExtension(fileName);
     return ['pdf', 'html', 'htm'].includes(ext);
   };
@@ -47,18 +207,48 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
   useEffect(() => {
     if (isTextFile(document.fileName) && document.url) {
       setIsLoadingText(true);
-      fetch(getFullUrl(document.url))
-        .then(response => response.text())
-        .then(text => {
-          setTextContent(text);
+      
+      // Get authentication token and fetch document content
+      getIdToken().then(token => {
+        if (token) {
+          fetch(getFullUrl(document.url), {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          })
+            .then(async response => {
+              if (!response.ok) {
+                // Try to get detailed error message from response
+                try {
+                  const errorData = await response.json();
+                  throw new Error(errorData.message || errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
+                } catch (jsonError) {
+                  // If response is not JSON, use status text
+                  throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+              }
+              return response.text();
+            })
+            .then(text => {
+              setTextContent(text);
+              setIsLoadingText(false);
+            })
+            .catch(error => {
+              console.error('Error loading text file:', error);
+              setTextContent(`Error: ${error.message}`);
+              setIsLoadingText(false);
+            });
+        } else {
+          console.error('No authentication token available');
           setIsLoadingText(false);
-        })
-        .catch(error => {
-          console.error('Error loading text file:', error);
-          setIsLoadingText(false);
-        });
+        }
+      }).catch(error => {
+        console.error('Error getting authentication token:', error);
+        setIsLoadingText(false);
+      });
     }
-  }, [document]);
+  }, [document, getIdToken]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -90,6 +280,13 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
 
           {document.url ? (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
+              {/* Debug info */}
+              <div className="p-2 bg-gray-100 text-xs text-gray-600">
+                Debug: fileName={document.fileName}, viewerStrategy={document.viewerStrategy}, 
+                isTextFile={isTextFile(document.fileName)}, 
+                canDisplayInIframe={canDisplayInIframe(document.fileName)}
+              </div>
+              
               {isTextFile(document.fileName) ? (
                 // Text file display with proper scrolling and view mode toggle
                 <div>
@@ -127,7 +324,7 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                       <div className="p-4">
                         {viewMode === 'formatted' ? (
                           <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                            {textContent}
+                            {textContent?.replace(/\\n/g, '\n')}
                           </div>
                         ) : (
                           <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-4 rounded border m-0">
@@ -143,12 +340,12 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                   </div>
                 </div>
               ) : canDisplayInIframe(document.fileName) ? (
-                // Display PDFs and HTML files in iframe
+                // Display PDFs and HTML files with authentication
                 <div className="max-h-[60vh] overflow-hidden">
-                  <iframe
-                    src={getFullUrl(document.url)}
-                    title={document.fileName}
-                    className="w-full h-full border-0"
+                  <AuthenticatedIframe 
+                    url={document.url} 
+                    fileName={document.fileName}
+                    getIdToken={getIdToken}
                   />
                 </div>
               ) : (

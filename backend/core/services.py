@@ -281,11 +281,12 @@ class DocumentProcessingService:
             # Check if documents have extractedText (processed) or need processing (raw)
             first_doc = processed_data['documents'][0]
             
-            if 'extractedText' in first_doc:
-                # This is already processed data, use existing logic
+            # Check if this is the old processed format or current OSS format
+            if 'extractedText' in first_doc and 'processingStatus' in first_doc:
+                # This is old processed data format, use existing logic
                 return DocumentProcessingService._prepare_processed_data(processed_data, template_data)
             else:
-                # This is raw patient data, process documents from OSS
+                # This is current OSS format, process documents from OSS
                 return DocumentProcessingService._prepare_raw_patient_data(processed_data, template_data)
         
         # Fallback for unexpected data structure
@@ -383,6 +384,7 @@ class DocumentProcessingService:
             total_text_length = 0
             
             print(f"Processing {len(documents)} documents from OSS for AI analysis using streaming...")
+            print(f"Document structure check - first doc keys: {list(documents[0].keys()) if documents else 'No documents'}")
             
             for doc in documents:
                 try:

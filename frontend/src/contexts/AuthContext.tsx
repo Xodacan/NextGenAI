@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { signInWithEmailPassword, signOut, onAuthStateChange, User } from '../firebase/auth';
+import { signInWithEmailPassword, signOut, onAuthStateChange, User, getIdToken } from '../firebase/auth';
 import { getUserProfile } from '../services/userService';
 
 export interface Institution {
@@ -19,6 +19,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isLoading: boolean;
+  getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -169,7 +170,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, institution, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, institution, login, logout, isLoading, getIdToken }}>
       {children}
     </AuthContext.Provider>
   );

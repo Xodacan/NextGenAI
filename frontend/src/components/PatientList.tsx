@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Filter, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import AddPatientModal from './AddPatientModal';
 
@@ -63,11 +63,10 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
         </div>
         
         <div className="relative">
-          <Filter className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
             <option value="All">All Status</option>
             <option value="Active">Active</option>

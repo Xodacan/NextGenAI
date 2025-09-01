@@ -104,22 +104,34 @@ Instructions: Generate a complete discharge summary using the template structure
 """
 
     prompt = ChatPromptTemplate.from_template(system_template)
-    model = OllamaLLM(
-        model=model_name,
-        num_predict=num_predict,
-        temperature=temperature,
-        top_p=top_p,
-    )
-    chain = prompt | model
-
+    
     try:
+        print(f"🤖 Creating Ollama LLM with model: {model_name}")
+        model = OllamaLLM(
+            model=model_name,
+            base_url="http://localhost:11434",  # Explicitly set local Ollama URL
+            num_predict=num_predict,
+            temperature=temperature,
+            top_p=top_p,
+        )
+        print(f"✅ Ollama LLM created successfully")
+        
+        chain = prompt | model
+        print(f"✅ Chain created successfully")
+        
+        print(f"📝 Invoking chain with documents length: {len(documents_text)}")
         result = chain.invoke({
             "documents": documents_text,
             "question": "generate a discharge summary according to the template provided, using the medical documents",
             "discharge_template": template_text or "",
         })
+        print(f"✅ Chain invocation successful, result type: {type(result)}")
         return str(result)
+        
     except Exception as exc:
+        print(f"❌ Error in Ollama chain: {exc}")
+        import traceback
+        traceback.print_exc()
         return f"Error generating summary: {exc}"
 
 
