@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FileText, Download } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { ClinicalDocument } from '../contexts/DataContext';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -179,24 +179,13 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
 
   // Helper function to check if file is text-based
   const isTextFile = (fileName: string): boolean => {
-    // First try viewerStrategy, fallback to file extension
-    if (document.viewerStrategy === 'text') return true;
     const ext = getFileExtension(fileName);
     // Include PDFs since they're now converted to text on the backend
     return ['txt', 'md', 'csv', 'json', 'xml', 'html', 'css', 'js', 'log', 'pdf'].includes(ext);
   };
 
-  // Helper function to check if file is PDF
-  const isPdfFile = (fileName: string): boolean => {
-    // First try viewerStrategy, fallback to file extension
-    if (document.viewerStrategy === 'pdf') return true;
-    return getFileExtension(fileName) === 'pdf';
-  };
-
   // Helper function to check if file can be displayed in iframe
   const canDisplayInIframe = (fileName: string): boolean => {
-    // First try viewerStrategy, fallback to file extension
-    if (document.viewerStrategy === 'pdf' || document.viewerStrategy === 'html') return true;
     const ext = getFileExtension(fileName);
     return ['pdf', 'html', 'htm'].includes(ext);
   };
@@ -217,7 +206,7 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
       
       // Get authentication token and fetch document content
       getIdToken().then(token => {
-        if (token) {
+        if (token && document.url) {
           fetch(getFullUrl(document.url), {
             headers: {
               'Authorization': `Bearer ${token}`,
@@ -350,7 +339,7 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                     </div>
                     <div className="flex justify-center">
                       <a
-                        href={getFullUrl(document.url)}
+                        href={document.url ? getFullUrl(document.url) : '#'}
                         download={document.fileName}
                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                       >
@@ -367,40 +356,12 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
                 <span className="text-sm font-semibold text-gray-700">Summary Content</span>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setViewMode('formatted')}
-                    className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
-                      viewMode === 'formatted' 
-                        ? 'bg-blue-600 text-white shadow-sm' 
-                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                    }`}
-                  >
-                    Formatted View
-                  </button>
-                  <button
-                    onClick={() => setViewMode('raw')}
-                    className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
-                      viewMode === 'raw' 
-                        ? 'bg-blue-600 text-white shadow-sm' 
-                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                    }`}
-                  >
-                    Raw Text
-                  </button>
-                </div>
               </div>
               <div className="max-h-[60vh] overflow-y-auto">
                 <div className="p-4">
-                  {viewMode === 'formatted' ? (
-                    <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                      {document.summary}
-                    </div>
-                  ) : (
-                    <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-3 rounded border m-0">
-                      {document.summary}
-                    </pre>
-                  )}
+                  <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                    {document.summary?.replace(/^["']|["']$/g, '')}
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,26 +1,27 @@
 import React, { useState } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
-import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2, Edit3, User, FolderOpen } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle, AlertCircle, User, FolderOpen } from 'lucide-react';
 
 import DocumentUploadModal from './DocumentUploadModal';
 import DocumentViewerModal from './DocumentViewerModal';
+import HighlightedSummary from './HighlightedSummary';
 
 interface PatientDetailProps {
   patientId: string;
   onBack: () => void;
-  onViewDocuments: () => void;
   onEditSummary: (summaryId: string) => void;
 }
 
-export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
+export default function PatientDetail({ patientId, onBack, onEditSummary }: PatientDetailProps) {
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, deleteSummary, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'documents'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'documents' | 'summary'>('details');
   const [documentTypeFilter, setDocumentTypeFilter] = useState<string>('all');
+  const [dismissedGenerationPopup, setDismissedGenerationPopup] = useState(false);
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -28,6 +29,13 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
 
   // Check if we're generating a summary for this patient
   const isGeneratingForThisPatient = isGeneratingSummary && generatingSummaryFor === patientId;
+
+  // Reset dismissed state when generation starts
+  React.useEffect(() => {
+    if (isGeneratingForThisPatient) {
+      setDismissedGenerationPopup(false);
+    }
+  }, [isGeneratingForThisPatient]);
 
   if (!patient) {
     return <div>Patient not found</div>;
@@ -41,18 +49,18 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
     
     setShowSuccessMessage(false);
     try {
-      const summaryId = await generateSummary(patientId);
-      setSuccessMessage('Discharge summary generated successfully! OpenRoom has created a comprehensive summary based on your clinical documents.');
+      await generateSummary(patientId);
+      setSuccessMessage('Discharge summary generated successfully! OpenRoom has created a comprehensive summary based on your clinical documents. The summary is now visible in the Personal Details tab.');
       setShowSuccessMessage(true);
       
-      onEditSummary(summaryId);
+      // Don't redirect to summary editor - stay on patient details page
     } catch (error) {
       console.error('Failed to generate summary:', error);
       setSuccessMessage(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setShowSuccessMessage(true);
     } finally {
-      // Hide success message after 5 seconds
-      setTimeout(() => setShowSuccessMessage(false), 5000);
+      // Hide success message after 8 seconds (longer for success message)
+      setTimeout(() => setShowSuccessMessage(false), 8000);
     }
   };
 
@@ -90,7 +98,8 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            disabled={isGeneratingForThisPatient}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <img src="/src/assets/Icons_Buttons_UploadDocuments.png" alt="Upload" className="h-4 w-4 mr-2" />
             Upload Document
@@ -106,7 +115,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 {isGeneratingForThisPatient ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    OpenRoom is generating your summary...
+                    Generating...
                   </>
                 ) : (
                   <>
@@ -116,25 +125,26 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 )}
               </button>
               
-              {isGeneratingForThisPatient && (
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                  </div>
-                  <span>OpenRoom is processing your documents...</span>
-                </div>
-              )}
+
             </div>
           ) : (
-            <button
-              onClick={() => onEditSummary(summary.id)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
-              {summary.status === 'Draft' ? 'Edit Summary' : 'View Summary'}
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => onEditSummary(summary.id)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
+                {summary.status === 'Draft' ? 'Edit Summary' : 'View Summary'}
+              </button>
+              <button
+                onClick={() => deleteSummary(summary.id)}
+                className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                title="Delete summary"
+              >
+                <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4 mr-2" />
+                Delete
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -166,20 +176,49 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
             <div className="flex items-center space-x-2">
               <FolderOpen className="h-4 w-4" />
               <span>Documents</span>
+              {isGeneratingForThisPatient && dismissedGenerationPopup && (
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Generating summary in background"></div>
+              )}
             </div>
           </button>
+          {summary && (
+            <button
+              onClick={() => setActiveTab('summary')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'summary'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <FileText className="h-4 w-4" />
+                <span>Summary</span>
+              </div>
+            </button>
+          )}
         </nav>
       </div>
 
       {/* Status Message Area */}
-      {isGeneratingForThisPatient && (
+      {isGeneratingForThisPatient && !dismissedGenerationPopup && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <div>
-              <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
-              <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <div>
+                <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
+                <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
+              </div>
             </div>
+            <button
+              onClick={() => setDismissedGenerationPopup(true)}
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+              title="Dismiss (generation will continue in background)"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
           
           <div className="space-y-2">
@@ -196,6 +235,10 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               <span>Generating comprehensive summary</span>
             </div>
           </div>
+          
+          <div className="mt-3 text-xs text-blue-600">
+            💡 You can dismiss this notification and continue using other features while the summary generates in the background.
+          </div>
         </div>
       )}
 
@@ -206,17 +249,27 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
             ? 'bg-red-50 border-red-200' 
             : 'bg-green-50 border-green-200'
         }`}>
-          <div className="flex items-center">
-            {successMessage.includes('Failed') ? (
-              <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
-            ) : (
-              <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {successMessage.includes('Failed') ? (
+                <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+              )}
+              <p className={`text-sm ${
+                successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
+              }`}>
+                {successMessage}
+              </p>
+            </div>
+            {!successMessage.includes('Failed') && summary && (
+              <button
+                onClick={() => onEditSummary(summary.id)}
+                className="ml-4 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+              >
+                View Summary
+              </button>
             )}
-            <p className={`text-sm ${
-              successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
-            }`}>
-              {successMessage}
-            </p>
           </div>
         </div>
       )}
@@ -224,58 +277,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       {/* Tab Content */}
       {activeTab === 'details' && (
         <div className="space-y-6">
-          {/* Summary Section */}
-          {summary && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
-                <div className="flex items-center space-x-2">
-                  {summary.status === 'Draft' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Draft" className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-600">Draft</span>
-                    </>
-                  )}
-                  {summary.status === 'Pending Review' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Pending Review" className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm text-blue-600">Pending Review</span>
-                    </>
-                  )}
-                  {summary.status === 'Approved' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_SummaryComplete.png" alt="Approved" className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-600">Approved</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-700 line-clamp-3">
-                  {summary.finalContent || summary.generatedContent}
-                </p>
-                {summary.status !== 'Approved' ? (
-                  <button
-                    onClick={() => onEditSummary(summary.id)}
-                    className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
-                  >
-                    {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'} →
-                  </button>
-                ) : (
-                  <div className="mt-2 text-sm text-gray-500">
-                    Summary finalized - view only
-                  </div>
-                )}
-              </div>
-              
-              {summary.approvalTimestamp && (
-                <div className="mt-3 text-xs text-gray-500">
-                  Approved on {new Date(summary.approvalTimestamp).toLocaleDateString()}
-                </div>
-              )}
-            </div>
-          )}
+
 
           {/* Alternative Discharge Summary Display */}
           {!summary && documents.some(doc => doc.documentType === 'Discharge Summary') && (
@@ -385,6 +387,59 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
+          {/* Summary Section - Moved from Details tab */}
+          {summary && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
+                <div className="flex items-center space-x-2">
+                  {summary.status === 'Draft' && (
+                    <>
+                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Draft" className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm text-yellow-600">Draft</span>
+                    </>
+                  )}
+                  {summary.status === 'Pending Review' && (
+                    <>
+                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Pending Review" className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm text-blue-600">Pending Review</span>
+                    </>
+                  )}
+                  {summary.status === 'Approved' && (
+                    <>
+                      <img src="/src/assets/Icons_Buttons_SummaryComplete.png" alt="Approved" className="h-4 w-4 text-green-500" />
+                      <span className="text-sm text-green-600">Approved</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-700 line-clamp-3">
+                  {summary.finalContent || summary.generatedContent}
+                </p>
+                {summary.status !== 'Approved' ? (
+                  <button
+                    onClick={() => onEditSummary(summary.id)}
+                    className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'} →
+                  </button>
+                ) : (
+                  <div className="mt-2 text-sm text-gray-500">
+                    Summary finalized - view only
+                  </div>
+                )}
+              </div>
+              
+              {summary.approvalTimestamp && (
+                <div className="mt-3 text-xs text-gray-500">
+                  Approved on {new Date(summary.approvalTimestamp).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          )}
+          
           {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -459,7 +514,7 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                         className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
                         title="Delete document"
                       >
-                        <img src="/src/assets/Icons_Buttons_Delete.png" alt="Delete" className="h-4 w-4" />
+                        <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -467,6 +522,17 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {activeTab === 'summary' && summary && (
+        <div className="space-y-6">
+          <HighlightedSummary
+            highlightedSummary={summary.highlighted_summary || summary.generatedContent}
+            sourceUsage={summary.source_usage || {}}
+            sourceAttributions={summary.source_attributions}
+            totalCharacters={summary.total_characters || summary.generatedContent.length}
+          />
         </div>
       )}
 

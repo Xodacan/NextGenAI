@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { getIdToken } from '../firebase/auth';
 import { useAuth } from './AuthContext';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 export interface Patient {
   id: string;
@@ -36,6 +37,11 @@ export interface ClinicalDocument {
   finalContent?: string;
   approvedBy?: string;
   approvalTimestamp?: string;
+  highlighted_summary?: string;
+  source_usage?: { [key: string]: number };
+  source_attributions?: { [key: string]: any };
+  total_characters?: number;
+  source_character_count?: number;
 }
 
 export interface DischargeSummary {
@@ -47,6 +53,11 @@ export interface DischargeSummary {
   createdTimestamp: string;
   approvedBy?: string;
   approvalTimestamp?: string;
+  highlighted_summary?: string;
+  source_usage?: { [key: string]: number };
+  source_attributions?: { [key: string]: any };
+  total_characters?: number;
+  source_character_count?: number;
 }
 
 interface DataContextType {
@@ -79,6 +90,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [generatingSummaryFor, setGeneratingSummaryFor] = useState<string | null>(null);
+  
+  // Confirmation modal state
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isDestructive: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    isDestructive: false
+  });
+  
   const { user } = useAuth();
 
   useEffect(() => {
@@ -312,6 +339,50 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log(`🗑️  Attempting to delete document ${docIndex} from patient ${patientId}`);
       
+      // Get the document being deleted to check if it's a discharge summary
+      const documentsToDelete = documents.filter(d => d.patientId === patientId);
+      const documentToDelete = documentsToDelete[docIndex];
+      const isDischargeSummary = documentToDelete?.documentType === 'Discharge Summary';
+      
+      console.log(`📄 Document to delete:`, {
+        fileName: documentToDelete?.fileName,
+        documentType: documentToDelete?.documentType,
+        isDischargeSummary
+      });
+      
+      // Show confirmation modal
+      const confirmMessage = isDischargeSummary 
+        ? `Are you sure you want to delete the discharge summary "${documentToDelete?.fileName}"? This will permanently remove the summary and cannot be undone.`
+        : `Are you sure you want to delete the document "${documentToDelete?.fileName}"? This action cannot be undone.`;
+      
+      const confirmTitle = isDischargeSummary 
+        ? 'Delete Discharge Summary'
+        : 'Delete Document';
+      
+      // Set up confirmation modal
+      setConfirmationModal({
+        isOpen: true,
+        title: confirmTitle,
+        message: confirmMessage,
+        onConfirm: () => performDocumentDeletion(patientId, docIndex, documentToDelete, isDischargeSummary),
+        isDestructive: true
+      });
+      
+      return; // Exit here, actual deletion will happen in onConfirm
+    } catch (error) {
+      console.error('❌ Error in deleteDocument:', error);
+    }
+  };
+
+  const performDocumentDeletion = async (
+    patientId: string, 
+    docIndex: number, 
+    documentToDelete: ClinicalDocument | undefined, 
+    isDischargeSummary: boolean
+  ) => {
+    try {
+      console.log('✅ User confirmed document deletion, proceeding...');
+      
       const token = await getIdToken();
       if (!token) {
         console.error('❌ No authentication token available');
@@ -346,12 +417,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           url: d.url,
           status: d.status,
           finalContent: d.finalContent,
+          highlighted_summary: d.highlighted_summary,
+          source_usage: d.source_usage,
+          total_characters: d.total_characters,
+          source_character_count: d.source_character_count,
         }));
         
         setDocuments(prev => {
           const filtered = prev.filter(d => d.patientId !== patientId);
           return [...filtered, ...projected];
         });
+        
+        // If we deleted a discharge summary document, also remove the corresponding summary entry
+        if (isDischargeSummary) {
+          console.log('🗑️  Removing discharge summary entry for patient:', patientId);
+          setSummaries(prev => {
+            const filtered = prev.filter(summary => summary.patientId !== patientId);
+            console.log('✅ Summary entry removed, remaining summaries:', filtered.length);
+            return filtered;
+          });
+        } else {
+          // Check if there are any discharge summary documents left for this patient
+          const hasDischargeSummaryDocs = projected.some(doc => doc.documentType === 'Discharge Summary');
+          if (!hasDischargeSummaryDocs) {
+            console.log('🗑️  No discharge summary documents left, removing summary entry for patient:', patientId);
+            setSummaries(prev => {
+              const filtered = prev.filter(summary => summary.patientId !== patientId);
+              console.log('✅ Summary entry removed (no docs left), remaining summaries:', filtered.length);
+              return filtered;
+            });
+          }
+        }
         
         console.log('✅ Documents state updated successfully');
       } else {
@@ -360,7 +456,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         console.error(`❌ Error details: ${errorText}`);
       }
     } catch (error) {
-      console.error('❌ Error in deleteDocument:', error);
+      console.error('❌ Error in performDocumentDeletion:', error);
     }
   };
 
@@ -395,15 +491,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         patientId: patientId,
         practitionerId: user.email || user.fullName || 'Unknown',
         documentType: 'Discharge Summary',
-        fileName: data.fileName || 'Discharge Summary',
+        fileName: data.summaryFile?.filename || 'Discharge Summary',
         uploadTimestamp: new Date().toISOString(),
-        summary: data.summary,
-        url: data.url,
+        summary: data.summaryFile?.fullContent || data.summaryFile?.content || '',
+        url: data.summaryFile?.url || '',
         status: 'Draft',
         finalContent: undefined,
         approvedBy: undefined,
-        approvalTimestamp: undefined
+        approvalTimestamp: undefined,
+        highlighted_summary: data.summaryFile?.highlighted_summary,
+        source_usage: data.summaryFile?.source_usage,
+        source_attributions: data.summaryFile?.source_attributions,
+        total_characters: data.summaryFile?.total_characters,
+        source_character_count: data.summaryFile?.source_character_count
       };
+      
+      // Debug: Log source attributions
+      console.log('🔍 Frontend received source_attributions:', data.summaryFile?.source_attributions);
+      console.log('🔍 Frontend received source_usage:', data.summaryFile?.source_usage);
       
       // Add to documents
       setDocuments(prev => [...prev, summaryDoc]);
@@ -413,12 +518,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         id: `summary-${patientId}`,
         patientId: patientId,
       status: 'Draft',
-        generatedContent: data.summary,
+        generatedContent: data.summaryFile?.fullContent || data.summaryFile?.content || '',
         finalContent: undefined,
         createdTimestamp: new Date().toISOString(),
         approvedBy: undefined,
-        approvalTimestamp: undefined
+        approvalTimestamp: undefined,
+        highlighted_summary: data.summaryFile?.highlighted_summary,
+        source_usage: data.summaryFile?.source_usage,
+        source_attributions: data.summaryFile?.source_attributions,
+        total_characters: data.summaryFile?.total_characters,
+        source_character_count: data.summaryFile?.source_character_count
     };
+
+    // Debug: Log summary creation
+    console.log('🔍 Creating new summary with source_attributions:', newSummary.source_attributions);
+    console.log('🔍 Creating new summary with source_usage:', newSummary.source_usage);
 
     setSummaries(prev => [...prev, newSummary]);
       
@@ -537,12 +651,40 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const summary = summaries.find(s => s.id === summaryId);
       if (!summary) return;
 
-      console.log('Deleting summary:', {
+      const patient = patients.find(p => p.id === summary.patientId);
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
+      
+      console.log('Preparing to delete summary:', {
         id: summaryId,
         patientId: summary.patientId,
+        patientName,
         status: summary.status
       });
+      
+      // Show confirmation modal
+      const confirmMessage = `Are you sure you want to delete the discharge summary for ${patientName}? This action cannot be undone.`;
+      
+      // Set up confirmation modal
+      setConfirmationModal({
+        isOpen: true,
+        title: 'Delete Discharge Summary',
+        message: confirmMessage,
+        onConfirm: () => performSummaryDeletion(summaryId, summary),
+        isDestructive: true
+      });
+      
+      return; // Exit here, actual deletion will happen in onConfirm
+      
+    } catch (error) {
+      console.error('Error in deleteSummary:', error);
+      throw error;
+    }
+  };
 
+  const performSummaryDeletion = async (summaryId: string, summary: DischargeSummary) => {
+    try {
+      console.log('✅ User confirmed summary deletion, proceeding...');
+      
       // Remove from summaries state
       setSummaries(prev => prev.filter(s => s.id !== summaryId));
 
@@ -552,9 +694,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ));
 
       console.log(`Summary ${summaryId} deleted successfully`);
-      
     } catch (error) {
-      console.error('Error deleting summary:', error);
+      console.error('Error in performSummaryDeletion:', error);
+      throw error;
     }
   };
 
@@ -563,12 +705,38 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const patient = patients.find(p => p.id === patientId);
       if (!patient) return;
 
-      console.log('Deleting patient:', {
+      const patientName = `${patient.firstName} ${patient.lastName}`;
+      
+      console.log('Preparing to delete patient:', {
         id: patientId,
-        name: `${patient.firstName} ${patient.lastName}`,
+        name: patientName,
         status: patient.status
       });
+      
+      // Show confirmation modal
+      const confirmMessage = `Are you sure you want to delete ${patientName}? This will also delete all associated documents and summaries. This action cannot be undone.`;
+      
+      // Set up confirmation modal
+      setConfirmationModal({
+        isOpen: true,
+        title: 'Delete Patient',
+        message: confirmMessage,
+        onConfirm: () => performPatientDeletion(patientId, patientName),
+        isDestructive: true
+      });
+      
+      return; // Exit here, actual deletion will happen in onConfirm
+      
+    } catch (error) {
+      console.error('Error in deletePatient:', error);
+      throw error;
+    }
+  };
 
+  const performPatientDeletion = async (patientId: string, patientName: string) => {
+    try {
+      console.log('✅ User confirmed patient deletion, proceeding...');
+      
       const token = await getIdToken();
       if (!token) {
         throw new Error('No authentication token available');
@@ -600,7 +768,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.log(`Patient ${patientId} deleted successfully`);
       
     } catch (error) {
-      console.error('Error deleting patient:', error);
+      console.error('Error in performPatientDeletion:', error);
       throw error;
     }
   };
@@ -824,6 +992,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshSummaries
     }}>
       {children}
+      <ConfirmationModal
+        isOpen={confirmationModal.isOpen}
+        onClose={() => setConfirmationModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmationModal.onConfirm}
+        title={confirmationModal.title}
+        message={confirmationModal.message}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDestructive={confirmationModal.isDestructive}
+      />
     </DataContext.Provider>
   );
 }

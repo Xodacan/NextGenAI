@@ -22,6 +22,8 @@ from firebase_auth.authentication import FirebaseAuthentication
 
 
 @api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
 def health_check(request):
     """
     Simple health check endpoint
@@ -34,6 +36,8 @@ def health_check(request):
 
 
 @api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
 def hello_world(request):
     """
     Simple hello world endpoint
@@ -120,7 +124,7 @@ class PatientRetrieveUpdateDeleteView(generics.RetrieveUpdateDestroyAPIView):
                             full_path = os.path.join(settings.MEDIA_ROOT, file_path)
                             if os.path.exists(full_path):
                                 os.remove(full_path)
-                                print(f"✅ Deleted local file: {full_path}")
+                            print(f"✅ Deleted local file: {full_path}")
                                 
                     except Exception as e:
                         print(f"❌ Error deleting document {doc.get('fileName', 'Unknown')}: {e}")
@@ -301,18 +305,31 @@ class GenerateSummaryView(APIView):
             template_content = ai_ready_data.get('dischargeSummaryTemplate', {}).get('templateContent', '')
             print(f"📋 Template content length: {len(template_content) if template_content else 0}")
             
-            # Generate summary using Ollama
+            # Generate summary using Ollama with source tracking
             try:
-                print(f"🤖 Calling Ollama service...")
-                summary_content = OllamaService.generate_patient_summary(ai_ready_data, template_content)
-                print(f"✅ Ollama summary generated: {len(summary_content) if summary_content else 0} characters")
+                print(f"🤖 Calling Ollama service with source tracking...")
+                summary_result = OllamaService.generate_patient_summary_with_sources(ai_ready_data, template_content)
+                print(f"✅ Ollama summary generated: {summary_result.get('total_characters', 0)} characters")
                 
-                if not summary_content or summary_content.startswith("Error generating summary"):
-                    print(f"❌ Ollama returned error: {summary_content}")
+                if not summary_result.get('summary') or summary_result.get('summary', '').startswith("Error generating summary"):
+                    print(f"❌ Ollama returned error: {summary_result.get('summary', 'Unknown error')}")
                     return Response({
                         'detail': 'Ollama service returned an error.',
-                        'error': summary_content
+                        'error': summary_result.get('summary', 'Unknown error')
                     }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                # Extract results
+                summary_content = summary_result.get('summary', '')
+                highlighted_summary = summary_result.get('highlighted_summary', '')
+                source_usage = summary_result.get('source_usage', {})
+                source_attributions = summary_result.get('source_attributions', {})
+                total_characters = summary_result.get('total_characters', 0)
+                source_character_count = summary_result.get('source_character_count', 0)
+                
+                # Debug: Log source attributions
+                print(f"🔍 Source attributions count: {len(source_attributions)}")
+                print(f"🔍 Source attributions keys: {list(source_attributions.keys())[:5]}...")
+                print(f"🔍 Source usage: {source_usage}")
                     
             except Exception as ollama_error:
                 print(f"❌ Error calling Ollama service: {ollama_error}")
@@ -334,7 +351,12 @@ class GenerateSummaryView(APIView):
                 'url': summary_result['url'],
                 'oss_path': summary_result['oss_path'],
                 'summary': summary_content,
-                'file_size': summary_result['file_size']
+                'file_size': summary_result['file_size'],
+                'highlighted_summary': highlighted_summary,
+                'source_usage': source_usage,
+                'source_attributions': source_attributions,
+                'total_characters': total_characters,
+                'source_character_count': source_character_count
             }
             
             # Add to patient documents
@@ -342,6 +364,10 @@ class GenerateSummaryView(APIView):
             docs.append(summary_doc)
             patient.documents = docs
             patient.save()
+            
+            # Debug: Log what was stored in database
+            print(f"🔍 Stored summary_doc with source_attributions: {len(summary_doc.get('source_attributions', {}))}")
+            print(f"🔍 Stored summary_doc with source_usage: {summary_doc.get('source_usage', {})}")
             
             summary_response = {
                 'message': 'Discharge summary generated successfully using Ollama and stored in OSS',
@@ -352,13 +378,19 @@ class GenerateSummaryView(APIView):
                     'fullContent': summary_content,
                     'oss_path': summary_result['oss_path'],
                     'url': summary_result['url'],
-                    'file_size': summary_result['file_size']
+                    'file_size': summary_result['file_size'],
+                    'highlighted_summary': highlighted_summary,
+                    'source_usage': source_usage,
+                    'source_attributions': source_attributions,
+                    'total_characters': total_characters,
+                    'source_character_count': source_character_count
                 },
                 'status': 'success',
                 'details': [
                     'Summary generated successfully using Ollama',
                     'Summary file uploaded to Alibaba Cloud OSS',
                     'Summary available in summaries list section',
+                    f'Generated from {len(source_usage)} document types',
                     f'OSS Path: {summary_result["oss_path"]}' if summary_result['oss_path'] else 'Stored locally (OSS upload failed)'
                 ]
             }

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Trash2 } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import AddPatientModal from './AddPatientModal';
 
@@ -23,17 +23,15 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
   });
 
   const handleDeletePatient = async (patientId: string, patientName: string) => {
-    if (window.confirm(`Are you sure you want to delete ${patientName}? This will also delete all associated documents and summaries. This action cannot be undone.`)) {
-      try {
-        setDeletingPatientId(patientId);
-        await deletePatient(patientId);
-        console.log(`Patient ${patientName} deleted successfully`);
-      } catch (error) {
-        console.error('Error deleting patient:', error);
-        alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      } finally {
-        setDeletingPatientId(null);
-      }
+    try {
+      setDeletingPatientId(patientId);
+      await deletePatient(patientId);
+      console.log(`Patient ${patientName} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeletingPatientId(null);
     }
   };
 
@@ -143,7 +141,7 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
                         className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
                         title="Delete patient"
                       >
-                        <img src="/src/assets/Icons_Buttons_Delete.png" alt="Delete" className="h-4 w-4" />
+                        <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4" />
                       </button>
                     </div>
                   </td>

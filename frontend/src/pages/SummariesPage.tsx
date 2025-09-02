@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileText, CheckCircle, Clock, Edit3, Trash2 } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Edit3 } from 'lucide-react';
 
 export default function SummariesPage() {
   const { summaries, patients, refreshSummaries, deleteSummary } = useData();
@@ -47,14 +47,12 @@ export default function SummariesPage() {
   };
 
   const handleDeleteSummary = async (summaryId: string, patientName: string) => {
-    if (window.confirm(`Are you sure you want to delete the discharge summary for ${patientName}? This action cannot be undone.`)) {
-      try {
-        await deleteSummary(summaryId);
-        console.log(`Summary ${summaryId} deleted successfully`);
-      } catch (error) {
-        console.error('Error deleting summary:', error);
-        alert('Failed to delete summary. Please try again.');
-      }
+    try {
+      await deleteSummary(summaryId);
+      console.log(`Summary ${summaryId} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting summary:', error);
+      alert('Failed to delete summary. Please try again.');
     }
   };
 
@@ -142,7 +140,7 @@ export default function SummariesPage() {
                             className="text-red-600 hover:text-red-900"
                             title="Delete summary"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
