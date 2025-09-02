@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Users, FileText, ClipboardList, Home, LogOut, Building2 } from 'lucide-react';
+import { Users, ClipboardList, Home, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import OpenRoomLogo from '../assets/OpenRoomLogo.png';
 
@@ -10,9 +10,7 @@ export default function Navigation() {
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
-    { path: '/institution', label: 'Institution', icon: Building2 },
     { path: '/patients', label: 'Patients', icon: Users },
-    { path: '/documents', label: 'Documents', icon: FileText },
     { path: '/summaries', label: 'Summaries', icon: ClipboardList },
   ];
 

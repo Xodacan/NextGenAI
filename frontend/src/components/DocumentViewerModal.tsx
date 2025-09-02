@@ -160,10 +160,17 @@ interface DocumentViewerModalProps {
 }
 
 export default function DocumentViewerModal({ document, onClose }: DocumentViewerModalProps) {
-  const { getIdToken } = useAuth();
+  const { getIdToken, user } = useAuth();
   const [textContent, setTextContent] = useState<string | null>(null);
   const [isLoadingText, setIsLoadingText] = useState(false);
-  const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
+
+  // Helper function to get practitioner name
+  const getPractitionerName = (practitionerId: string) => {
+    if (practitionerId === user?.id) {
+      return user.displayName || user.fullName || 'Current Doctor';
+    }
+    return practitionerId || 'Not specified';
+  };
 
   // Helper function to get file extension
   const getFileExtension = (fileName: string): string => {
@@ -262,79 +269,56 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
             </div>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <X className="h-4 w-4" />
+            <img src="/src/assets/Icons_Buttons_CancelEdit.png" alt="Close" className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Uploaded</p>
-              <p className="font-medium">{new Date(document.uploadTimestamp).toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Practitioner</p>
-              <p className="font-medium">{document.practitionerId || 'Unknown'}</p>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Document Metadata */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3">Document Information</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Date & Time</p>
+                <p className="text-sm text-gray-900 font-medium">{new Date(document.uploadTimestamp).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Uploaded By</p>
+                <p className="text-sm text-gray-900 font-medium">{getPractitionerName(document.practitionerId)}</p>
+              </div>
             </div>
           </div>
 
           {document.url ? (
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              {/* Debug info */}
-              <div className="p-2 bg-gray-100 text-xs text-gray-600">
-                Debug: fileName={document.fileName}, viewerStrategy={document.viewerStrategy}, 
-                isTextFile={isTextFile(document.fileName)}, 
-                canDisplayInIframe={canDisplayInIframe(document.fileName)}
-              </div>
               
-              {isTextFile(document.fileName) ? (
+                              {isTextFile(document.fileName) ? (
                 // Text file display with proper scrolling and view mode toggle
                 <div>
-                  <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
-                    <span className="text-sm font-medium text-gray-700">Text Content</span>
-                    <div className="flex space-x-1">
-                      <button
-                        onClick={() => setViewMode('formatted')}
-                        className={`px-3 py-1 text-xs rounded ${
-                          viewMode === 'formatted' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        Formatted
-                      </button>
-                      <button
-                        onClick={() => setViewMode('raw')}
-                        className={`px-3 py-1 text-xs rounded ${
-                          viewMode === 'raw' 
-                            ? 'bg-blue-600 text-white' 
-                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                      >
-                        Raw
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <span className="text-sm font-semibold text-gray-700">Document Content</span>
                   </div>
                   <div className="max-h-[60vh] overflow-y-auto">
                     {isLoadingText ? (
                       <div className="flex items-center justify-center h-32">
-                        <div className="text-gray-500">Loading text content...</div>
+                        <div className="flex items-center space-x-2 text-gray-500">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                          <span>Loading document content...</span>
+                        </div>
                       </div>
                     ) : textContent ? (
-                      <div className="p-4">
-                        {viewMode === 'formatted' ? (
-                          <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                            {textContent?.replace(/\\n/g, '\n')}
-                          </div>
-                        ) : (
-                          <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-4 rounded border m-0">
-                            {textContent}
-                          </pre>
-                        )}
+                      <div className="p-6">
+                        <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {textContent?.replace(/\\n/g, '\n').replace(/^["']|["']$/g, '')}
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center h-32">
-                        <div className="text-gray-500">Unable to load text content</div>
+                        <div className="text-center text-gray-500">
+                          <div className="text-lg mb-2">📄</div>
+                          <p>Unable to load document content</p>
+                          <p className="text-xs mt-1">The document may be corrupted or in an unsupported format</p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -342,6 +326,9 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
               ) : canDisplayInIframe(document.fileName) ? (
                 // Display PDFs and HTML files with authentication
                 <div className="max-h-[60vh] overflow-hidden">
+                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                    <span className="text-sm font-semibold text-gray-700">Document Preview</span>
+                  </div>
                   <AuthenticatedIframe 
                     url={document.url} 
                     fileName={document.fileName}
@@ -352,7 +339,9 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                 // For other file types, show download option and file info
                 <div className="max-h-[60vh] overflow-y-auto p-6">
                   <div className="text-center space-y-4">
-                    <FileText className="h-16 w-16 mx-auto text-gray-400" />
+                    <div className="h-16 w-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                      <span className="text-2xl text-gray-400">📄</span>
+                    </div>
                     <div>
                       <h4 className="text-lg font-medium text-gray-900">{document.fileName}</h4>
                       <p className="text-sm text-gray-500 mt-1">
@@ -365,7 +354,7 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                         download={document.fileName}
                         className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                       >
-                        <Download className="h-4 w-4 mr-2" />
+                        <img src="/src/assets/Icons_Actions_Download.png" alt="Download" className="h-4 w-4 mr-2" />
                         Download File
                       </a>
                     </div>
@@ -376,28 +365,28 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
           ) : document.summary ? (
             // Show summary content if no URL but summary exists
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-50 border-b border-gray-200">
-                <span className="text-sm font-medium text-gray-700">Summary Content</span>
-                <div className="flex space-x-1">
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <span className="text-sm font-semibold text-gray-700">Summary Content</span>
+                <div className="flex space-x-2">
                   <button
                     onClick={() => setViewMode('formatted')}
-                    className={`px-3 py-1 text-xs rounded ${
+                    className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
                       viewMode === 'formatted' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ? 'bg-blue-600 text-white shadow-sm' 
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    Formatted
+                    Formatted View
                   </button>
                   <button
                     onClick={() => setViewMode('raw')}
-                    className={`px-3 py-1 text-xs rounded ${
+                    className={`px-3 py-1.5 text-xs rounded-md font-medium transition-colors ${
                       viewMode === 'raw' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        ? 'bg-blue-600 text-white shadow-sm' 
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
-                    Raw
+                    Raw Text
                   </button>
                 </div>
               </div>
@@ -419,7 +408,9 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
             // Show document metadata and any available content
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
               <div className="text-center space-y-4">
-                <FileText className="h-16 w-16 mx-auto text-gray-400" />
+                <div className="h-16 w-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
+                  <span className="text-2xl text-gray-400">📄</span>
+                </div>
                 <div className="space-y-2">
                   <h4 className="text-lg font-medium text-gray-900">{document.fileName}</h4>
                   <p className="text-sm text-gray-500">
@@ -440,16 +431,12 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                   
                   {document.practitionerId && (
                     <div>
-                      <p className="text-sm text-gray-500">Uploaded by: <span className="font-medium">{document.practitionerId}</span></p>
+                      <p className="text-sm text-gray-500">Uploaded by: <span className="font-medium">{getPractitionerName(document.practitionerId)}</span></p>
                     </div>
                   )}
                   
                   <div>
-                    <p className="text-sm text-gray-500">Uploaded: <span className="font-medium">{new Date(document.uploadTimestamp).toLocaleString()}</span></p>
-                  </div>
-                  
-                  <div>
-                    <p className="text-sm text-gray-500">Patient ID: <span className="font-medium">{document.patientId}</span></p>
+                    <p className="text-sm text-gray-500">Date & Time: <span className="font-medium">{new Date(document.uploadTimestamp).toLocaleString()}</span></p>
                   </div>
                 </div>
                 
@@ -462,47 +449,19 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
 
           {document.summary && (
             <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="mb-3">
                 <p className="text-sm text-gray-500 font-medium">Attached Summary</p>
-                <div className="flex space-x-1">
-                  <button
-                    onClick={() => setViewMode('formatted')}
-                    className={`px-2 py-1 text-xs rounded ${
-                      viewMode === 'formatted' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Formatted
-                  </button>
-                  <button
-                    onClick={() => setViewMode('raw')}
-                    className={`px-2 py-1 text-xs rounded ${
-                      viewMode === 'raw' 
-                        ? 'bg-blue-600 text-white' 
-                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                    }`}
-                  >
-                    Raw
-                  </button>
-                </div>
               </div>
               <div className="max-h-[40vh] overflow-y-auto">
-                {viewMode === 'formatted' ? (
-                  <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                    {document.summary}
-                  </div>
-                ) : (
-                  <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono bg-gray-50 p-3 rounded border m-0">
-                    {document.summary}
-                  </pre>
-                )}
+                <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  {document.summary?.replace(/^["']|["']$/g, '')}
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center flex-shrink-0">
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center flex-shrink-0 bg-gray-50">
           <div className="flex items-center space-x-2">
             {isTextFile(document.fileName) && textContent && (
               <button
@@ -517,15 +476,15 @@ export default function DocumentViewerModal({ document, onClose }: DocumentViewe
                   window.document.body.removeChild(a);
                   URL.revokeObjectURL(url);
                 }}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
               >
-                <Download className="h-4 w-4" />
-                <span>Download TXT</span>
+                <img src="/src/assets/Icons_Actions_Download.png" alt="Download" className="h-4 w-4" />
+                <span>Download as TXT</span>
               </button>
             )}
           </div>
-          <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
-            Close
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors shadow-sm">
+            Close Document
           </button>
         </div>
       </div>

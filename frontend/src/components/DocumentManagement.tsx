@@ -253,11 +253,11 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
                           onClick={() => setSelectedDoc(document.id)}
                           className="text-blue-600 hover:text-blue-900 inline-flex items-center"
                         >
-                          <Eye className="h-4 w-4 mr-1" />
+                          <img src="/src/assets/Icons_Actions_View.png" alt="View" className="h-4 w-4 mr-1" />
                           View
                         </button>
                         <button className="text-green-600 hover:text-green-900 inline-flex items-center">
-                          <Download className="h-4 w-4 mr-1" />
+                          <img src="/src/assets/Icons_Actions_Download.png" alt="Download" className="h-4 w-4 mr-1" />
                           Download
                         </button>
                         <button
@@ -268,7 +268,7 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
                           {isGeneratingSummary ? (
                             <Loader className="h-4 w-4 mr-1 animate-spin" />
                           ) : (
-                            <Brain className="h-4 w-4 mr-1" />
+                            <img src="/src/assets/Icons_Actions_Generate.png" alt="Generate" className="h-4 w-4 mr-1" />
                           )}
                           Summarize
                         </button>

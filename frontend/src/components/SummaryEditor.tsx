@@ -167,16 +167,18 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
               {!isCurrentlyEditing ? (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors inline-flex items-center"
                 >
+                  <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
                   {summary?.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'}
                 </button>
               ) : (
                 <button
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 inline-flex items-center"
                 >
+                  <img src="/src/assets/Icons_Buttons_SaveChanges.png" alt="Save" className="h-4 w-4 mr-2" />
                   {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
               )}
@@ -196,8 +198,9 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
           {isCurrentlyEditing && (
             <button
               onClick={() => setIsEditing(false)}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors inline-flex items-center"
             >
+              <img src="/src/assets/Icons_Buttons_CancelEdit.png" alt="Cancel" className="h-4 w-4 mr-2" />
               Cancel
             </button>
           )}
