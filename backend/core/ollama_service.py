@@ -3,6 +3,8 @@ from langchain_core.prompts import ChatPromptTemplate
 import os
 from typing import Dict, Any
 import logging
+import time
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -78,29 +80,15 @@ def generate_discharge_summary_from_object(
         return "No medical document content provided."
 
     system_template = """
-You are a medical professional tasked with generating a comprehensive discharge summary. Your role is to:
+Generate a discharge summary using the template structure below. Extract real patient information from the medical documents and replace all placeholder text with actual data. If information is missing, write "Not documented".
 
-1. CAREFULLY READ AND ANALYZE all provided medical documents
-2. EXTRACT REAL PATIENT INFORMATION including:
-   - Patient's actual name, age, gender
-   - Real diagnostic tests performed and their results
-   - Actual procedures, treatments, and medications given
-   - Real medical history and current condition
-   - Actual discharge instructions provided
-
-3. USE THE TEMPLATE AS A GUIDE, but fill in ALL placeholders with REAL INFORMATION from the documents
-4. NEVER use placeholder text like [Patient Name], [Diagnostic test], [Any additional treatments] - replace these with actual data
-5. If information is missing from documents, state "Not documented" rather than fabricating details
-
-IMPORTANT: The template below is just a structure guide. You must replace ALL placeholder text with actual patient information extracted from the medical documents.
-
-Template structure (fill in with real data):
+Template:
 {discharge_template}
 
-Medical documents to analyze:
+Medical documents:
 {documents}
 
-Instructions: Generate a complete discharge summary using the template structure above, but fill in every field with actual patient information from the documents. Do not leave any placeholder text - replace everything with real data or "Not documented" if information is unavailable.
+Generate the discharge summary now:
 """
 
     prompt = ChatPromptTemplate.from_template(system_template)
@@ -113,16 +101,16 @@ Instructions: Generate a complete discharge summary using the template structure
             num_predict=num_predict,
             temperature=temperature,
             top_p=top_p,
+            timeout=300,  # 5 minute timeout for Ollama requests
         )
         print(f"✅ Ollama LLM created successfully")
         
         chain = prompt | model
         print(f"✅ Chain created successfully")
-        
+
         print(f"📝 Invoking chain with documents length: {len(documents_text)}")
         result = chain.invoke({
             "documents": documents_text,
-            "question": "generate a discharge summary according to the template provided, using the medical documents",
             "discharge_template": template_text or "",
         })
         print(f"✅ Chain invocation successful, result type: {type(result)}")
@@ -137,6 +125,58 @@ Instructions: Generate a complete discharge summary using the template structure
 
 class OllamaService:
     """Service for integrating with Ollama for medical summary generation."""
+    
+    @staticmethod
+    def check_ollama_health() -> Dict[str, Any]:
+        """
+        Check if Ollama service is running and accessible.
+        
+        Returns:
+            Dictionary with health status information
+        """
+        try:
+            import requests
+            
+            # Try to connect to Ollama API
+            response = requests.get("http://localhost:11434/api/tags", timeout=5)
+            
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                return {
+                    'status': 'healthy',
+                    'message': 'Ollama service is running',
+                    'available_models': [model.get('name', 'unknown') for model in models],
+                    'model_count': len(models)
+                }
+            else:
+                return {
+                    'status': 'unhealthy',
+                    'message': f'Ollama API returned status {response.status_code}',
+                    'available_models': [],
+                    'model_count': 0
+                }
+                
+        except requests.exceptions.ConnectionError:
+            return {
+                'status': 'unhealthy',
+                'message': 'Cannot connect to Ollama service at localhost:11434',
+                'available_models': [],
+                'model_count': 0
+            }
+        except requests.exceptions.Timeout:
+            return {
+                'status': 'unhealthy',
+                'message': 'Ollama service connection timed out',
+                'available_models': [],
+                'model_count': 0
+            }
+        except Exception as e:
+            return {
+                'status': 'unhealthy',
+                'message': f'Error checking Ollama health: {str(e)}',
+                'available_models': [],
+                'model_count': 0
+            }
     
     @staticmethod
     def generate_patient_summary_with_sources(patient_data: Dict[str, Any], template_content: str) -> Dict[str, Any]:
@@ -183,96 +223,32 @@ class OllamaService:
             from datetime import datetime
             current_date = datetime.now().strftime("%d/%m/%Y")
             
-            # Add specific instructions for the agent with source tracking
-            enhanced_template = f"""
-🚨 CRITICAL INSTRUCTION: FOLLOW THE DISCHARGE TEMPLATE EXACTLY 🚨
-
-You are a medical AI assistant. Your task is to generate a discharge summary that follows the provided template structure.
-
-FIRST LINE TEST: You MUST start your response with exactly this line:
-SOURCE_TRACKING_ENABLED: YES
-
-🚨 TEMPLATE-FOCUSED APPROACH 🚨
-- You MUST follow the exact template structure provided below
-- Fill ONLY the sections that are in the template
-- Do NOT add sections that are not in the template
-- Do NOT summarize all documents - only include information relevant to the template sections
-- Let the template guide what information to include
-
-🚨 CRITICAL: USE TEMPLATE AS YOUR GUIDE 🚨
-- Read the template structure carefully
-- Only include information that fits the template sections
-- If a template section asks for specific information, look for it in the documents
-- If a template section is not relevant to this patient, write "Not applicable"
-- If information is missing for a required template section, write "Not documented"
-
-PATIENT INFORMATION PROVIDED:
-- Patient ID: {patient_info.get('patient_id', 'Not provided')}
-- Patient Name: {patient_info.get('patient_name', 'Not provided')}
-- Date of Birth: {patient_info.get('patient_dob', 'Not provided')}
-- Gender: {patient_info.get('patient_gender', 'Not provided')}
-- Admission Date: {patient_info.get('admission_date', 'Not provided')}
-- Room Number: {patient_info.get('room_number', 'Not provided')}
-- Current Date: {current_date}
-- Use {current_date} as the discharge date
-
-REQUIRED FORMAT FOR ALL INFORMATION:
-- [LAB: information] for Lab Results
-- [RAD: information] for Radiology Report  
-- [PROG: information] for Progress Notes
-- [DISCH: information] for Discharge Instructions
-- [MED: information] for Medication List
-- [VITALS: information] for Vital Signs
-- [CONSULT: information] for Consultation Notes
-- [SURG: information] for Surgery Notes
-- [ED: information] for Emergency Department Notes
-- [NURSING: information] for Nursing Notes
-- [PATH: information] for Pathology Report
-- [PE: information] for Physical Examination
-- [H&P: information] for History and Physical
-- [OP: information] for Operative Report
-- [SYSTEM: information] for system-generated information like discharge date
-
-🚨 CRITICAL RULES:
-1. START with "SOURCE_TRACKING_ENABLED: YES"
-2. FOLLOW THE TEMPLATE STRUCTURE EXACTLY - do not create your own format
-3. ONLY include information that fits the template sections
-4. EVERY piece of information MUST have a source tag
-5. Use the exact format [TYPE: information]
-6. If information is missing for a template section, write "Not documented"
-7. If a template section is not applicable, write "Not applicable"
-8. Use {current_date} as the discharge date
-9. Let the template guide what to include - don't summarize everything
-
-DOCUMENTS TO ANALYZE:
-{chr(10).join([f"=== {doc['title']} ({doc['type']}) ==={chr(10)}{doc['content'][:1500]}{'...' if len(doc['content']) > 1500 else ''}" for doc in documents])}
-
-TEMPLATE TO FOLLOW EXACTLY:
-{template_content}
-
-🚨 FINAL REMINDER: 
-- Follow the template structure exactly
-- Only include information that fits the template sections
-- Every piece of information MUST have a source tag
-- Start with "SOURCE_TRACKING_ENABLED: YES"
-- Use {current_date} as the discharge date
-- Let the template guide what information to include"""
-            
             # Debug: Log the template content being passed
             print(f"🔍 Template content length: {len(template_content)}")
             print(f"🔍 Template content preview: {template_content[:500]}...")
-            print(f"🔍 Enhanced template length: {len(enhanced_template)}")
             
-            # Generate summary using Ollama with enhanced template
+            # Generate summary using Ollama with original template
             # Try different model parameters for better source tracking compliance
-            summary = generate_discharge_summary_from_object(
-                patient_record=patient_info,
-                template_text=enhanced_template,
-                model_name="llama3.2",   # Use available Llama model
-                num_predict=4096,      # Increased for longer summaries
-                temperature=0.1,       # Very low temperature for more focused output
-                top_p=0.8
-            )
+            print(f"🕐 Starting Ollama generation with timeout protection...")
+            start_time = time.time()
+            
+            try:
+                summary = generate_discharge_summary_from_object(
+                    patient_record=patient_info,
+                    template_text=template_content,  # Use original template, not enhanced
+                    model_name="llama3.2",   # Use available Llama model
+                    num_predict=4096,      # Increased for longer summaries
+                    temperature=0.1,       # Very low temperature for more focused output
+                    top_p=0.8
+                )
+                
+                elapsed_time = time.time() - start_time
+                print(f"✅ Ollama generation completed in {elapsed_time:.2f} seconds")
+                
+            except Exception as e:
+                elapsed_time = time.time() - start_time
+                print(f"❌ Ollama generation failed after {elapsed_time:.2f} seconds: {e}")
+                raise
             
             # Process the summary to extract source information
             source_usage = {}

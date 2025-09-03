@@ -34,6 +34,22 @@ def health_check(request):
         'framework': 'Django REST Framework'
     }, status=status.HTTP_200_OK)
 
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def ollama_health_check(request):
+    """
+    Health check endpoint to verify Ollama service is running.
+    """
+    from .ollama_service import OllamaService
+    
+    health_status = OllamaService.check_ollama_health()
+    
+    if health_status['status'] == 'healthy':
+        return Response(health_status, status=status.HTTP_200_OK)
+    else:
+        return Response(health_status, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
 
 @api_view(['GET'])
 @authentication_classes([])
@@ -287,6 +303,14 @@ class GenerateSummaryView(APIView):
             patient_docs = patient.documents or []
             print(f"📄 Processing {len(patient_docs)} documents for patient {pk}")
             
+            # Check if a discharge summary already exists
+            existing_summary = any(doc.get('documentType') == 'Discharge Summary' for doc in patient_docs)
+            if existing_summary:
+                return Response({
+                    'detail': 'A discharge summary already exists for this patient. Please delete the existing summary before generating a new one.',
+                    'error': 'DUPLICATE_SUMMARY'
+                }, status=status.HTTP_409_CONFLICT)
+            
             # Process documents for AI analysis
             try:
                 ai_ready_data = DocumentProcessingService.prepare_for_ai_analysis({
@@ -333,10 +357,19 @@ class GenerateSummaryView(APIView):
                     
             except Exception as ollama_error:
                 print(f"❌ Error calling Ollama service: {ollama_error}")
-                return Response({
-                    'detail': 'Error calling Ollama service.',
-                    'error': str(ollama_error)
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                # Check if it's a timeout error
+                if "timed out" in str(ollama_error).lower() or "timeout" in str(ollama_error).lower():
+                    return Response({
+                        'detail': 'Summary generation timed out. The request took too long to process.',
+                        'error': 'Timeout: Please try again with fewer documents or check if Ollama service is running.',
+                        'suggestion': 'Try reducing the number of documents or check Ollama service status.'
+                    }, status=status.HTTP_408_REQUEST_TIMEOUT)
+                else:
+                    return Response({
+                        'detail': 'Error calling Ollama service.',
+                        'error': str(ollama_error)
+                    }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Create summary file and upload to OSS
             patient_name = f"{patient.first_name}_{patient.last_name}"
@@ -359,11 +392,19 @@ class GenerateSummaryView(APIView):
                 'source_character_count': source_character_count
             }
             
-            # Add to patient documents
+            # Add to patient documents - remove existing discharge summaries first
             docs = patient.documents or []
+            
+            # Remove any existing discharge summaries to prevent duplicates
+            docs = [doc for doc in docs if doc.get('documentType') != 'Discharge Summary']
+            print(f"🧹 Removed existing discharge summaries, {len(docs)} documents remaining")
+            
+            # Add the new summary document
             docs.append(summary_doc)
             patient.documents = docs
             patient.save()
+            
+            print(f"✅ Added new discharge summary, total documents: {len(docs)}")
             
             # Debug: Log what was stored in database
             print(f"🔍 Stored summary_doc with source_attributions: {len(summary_doc.get('source_attributions', {}))}")

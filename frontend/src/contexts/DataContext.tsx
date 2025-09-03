@@ -77,6 +77,7 @@ interface DataContextType {
   generateSummary: (patientId: string) => Promise<string>;
   updateSummary: (id: string, updates: Partial<DischargeSummary>) => Promise<void>;
   deleteSummary: (summaryId: string) => Promise<void>;
+  deleteSummaryDirect: (summaryId: string) => Promise<void>;
   refreshPatients: () => Promise<void>;
   refreshSummaries: () => Promise<void>;
 }
@@ -463,6 +464,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const generateSummary = async (patientId: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
     
+    // Check if a summary already exists for this patient
+    const existingSummary = getPatientSummary(patientId);
+    if (existingSummary) {
+      throw new Error('A discharge summary already exists for this patient. Please delete the existing summary before generating a new one.');
+    }
+    
     try {
       // Set global loading state
       setIsGeneratingSummary(true);
@@ -510,8 +517,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.log('🔍 Frontend received source_attributions:', data.summaryFile?.source_attributions);
       console.log('🔍 Frontend received source_usage:', data.summaryFile?.source_usage);
       
-      // Add to documents
-      setDocuments(prev => [...prev, summaryDoc]);
+      // Add to documents - remove existing discharge summaries for this patient first
+      setDocuments(prev => {
+        const filtered = prev.filter(doc => !(doc.patientId === patientId && doc.documentType === 'Discharge Summary'));
+        return [...filtered, summaryDoc];
+      });
       
       // Create summary entry
     const newSummary: DischargeSummary = {
@@ -534,7 +544,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     console.log('🔍 Creating new summary with source_attributions:', newSummary.source_attributions);
     console.log('🔍 Creating new summary with source_usage:', newSummary.source_usage);
 
-    setSummaries(prev => [...prev, newSummary]);
+    // Remove any existing summaries for this patient before adding the new one
+    setSummaries(prev => {
+      const filtered = prev.filter(s => s.patientId !== patientId);
+      return [...filtered, newSummary];
+    });
       
     return newSummary.id;
       
@@ -685,6 +699,28 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('✅ User confirmed summary deletion, proceeding...');
       
+      // Find the document index for the discharge summary
+      const documents = getPatientDocuments(summary.patientId);
+      const summaryDocIndex = documents.findIndex(doc => doc.documentType === 'Discharge Summary');
+      
+      if (summaryDocIndex !== -1) {
+        // Call the backend API to delete the document
+        const response = await fetch(`http://localhost:8000/api/patients/${summary.patientId}/documents/${summaryDocIndex}/`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${await getIdToken()}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.detail || 'Failed to delete summary from server');
+        }
+
+        console.log('✅ Summary deleted from server successfully');
+      }
+      
       // Remove from summaries state
       setSummaries(prev => prev.filter(s => s.id !== summaryId));
 
@@ -696,6 +732,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       console.log(`Summary ${summaryId} deleted successfully`);
     } catch (error) {
       console.error('Error in performSummaryDeletion:', error);
+      throw error;
+    }
+  };
+
+  const deleteSummaryDirect = async (summaryId: string) => {
+    try {
+      const summary = summaries.find(s => s.id === summaryId);
+      if (!summary) return;
+
+      console.log('Deleting summary directly:', {
+        id: summaryId,
+        patientId: summary.patientId,
+        status: summary.status
+      });
+      
+      await performSummaryDeletion(summaryId, summary);
+    } catch (error) {
+      console.error('Error in deleteSummaryDirect:', error);
       throw error;
     }
   };
@@ -986,6 +1040,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       generateSummary,
       updateSummary,
       deleteSummary,
+      deleteSummaryDirect,
       getPatientDocuments,
       getPatientSummary,
       refreshPatients,

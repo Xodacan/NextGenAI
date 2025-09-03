@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileText, CheckCircle, Clock, Edit3 } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Edit3, AlertCircle } from 'lucide-react';
 
 export default function SummariesPage() {
   const { summaries, patients, refreshSummaries, deleteSummary } = useData();
   const navigate = useNavigate();
   const location = useLocation();
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     // Refresh summaries when the page loads
@@ -47,12 +49,22 @@ export default function SummariesPage() {
   };
 
   const handleDeleteSummary = async (summaryId: string, patientName: string) => {
+    setShowSuccessMessage(false);
     try {
       await deleteSummary(summaryId);
+      setSuccessMessage(`Discharge summary for ${patientName} has been deleted successfully.`);
+      setShowSuccessMessage(true);
       console.log(`Summary ${summaryId} deleted successfully`);
+      
+      // Hide success message after 5 seconds
+      setTimeout(() => setShowSuccessMessage(false), 5000);
     } catch (error) {
       console.error('Error deleting summary:', error);
-      alert('Failed to delete summary. Please try again.');
+      setSuccessMessage(`Failed to delete summary for ${patientName}. Please try again.`);
+      setShowSuccessMessage(true);
+      
+      // Hide error message after 8 seconds
+      setTimeout(() => setShowSuccessMessage(false), 8000);
     }
   };
 
@@ -70,6 +82,38 @@ export default function SummariesPage() {
           Refresh
         </button>
       </div>
+      
+      {/* Success/Error Message Area */}
+      {showSuccessMessage && (
+        <div className={`border rounded-lg p-4 mb-6 ${
+          successMessage.includes('Failed') 
+            ? 'bg-red-50 border-red-200' 
+            : 'bg-green-50 border-green-200'
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {successMessage.includes('Failed') ? (
+                <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+              )}
+              <p className={`text-sm ${
+                successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
+              }`}>
+                {successMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSuccessMessage(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
       
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         {summaries.length === 0 ? (
