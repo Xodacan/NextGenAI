@@ -62,11 +62,11 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
     }
   }, [highlightSummaryId, patientSummary]);
 
-  const generateDocumentSummary = async (documentId: string) => {
+  const generateSummary = async (documentId: string) => {
     setIsGeneratingSummary(true);
     
     try {
-      const document = relevantDocuments.find(doc => doc.id === documentId);
+      const document = documents.find(d => d.id === documentId);
       if (!document) {
         throw new Error('Document not found');
       }
@@ -75,66 +75,36 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
       const patient = patients.find(p => p.id === document.patientId);
       const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
 
-      // Call OpenAI API through our backend
-      const response = await fetch('http://localhost:8000/api/openai/analyze-document/', {
+      // Call Ollama API through our backend to generate summary
+      const response = await fetch(`http://localhost:8000/api/patients/${document.patientId}/generate-summary/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${await getIdToken()}`,
         },
-        body: JSON.stringify({
-          patient_id: document.patientId,
-          document_name: document.fileName,
-          document_type: document.documentType,
-          oss_path: `patients/${document.patientId}/${document.fileName}` // Assuming this is the OSS path
-        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to analyze document');
+        throw new Error('Failed to generate summary');
       }
 
       const data = await response.json();
       
-      if (data.success) {
-        // Poll for completion
-        const pollInterval = setInterval(async () => {
-          const statusResponse = await fetch(`http://localhost:8000/api/openai/document-analysis/${data.analysis_id}/`, {
-            headers: {
-              'Authorization': `Bearer ${await getIdToken()}`,
-            },
-          });
-          
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json();
-            
-            if (statusData.analysis.status === 'completed') {
-              clearInterval(pollInterval);
-              setDocumentSummaries(prev => ({
-                ...prev,
-                [documentId]: statusData.analysis.analysis_summary
-              }));
-              setIsGeneratingSummary(false);
-            } else if (statusData.analysis.status === 'failed') {
-              clearInterval(pollInterval);
-              throw new Error('Document analysis failed');
-            }
-          }
-        }, 2000); // Poll every 2 seconds
-        
-        // Timeout after 60 seconds
-        setTimeout(() => {
-          clearInterval(pollInterval);
-          setIsGeneratingSummary(false);
-        }, 60000);
+      if (data.status === 'success') {
+        // Ollama generates summary immediately, no polling needed
+        setDocumentSummaries(prev => ({
+          ...prev,
+          [documentId]: data.summaryFile.fullContent
+        }));
+        setIsGeneratingSummary(false);
       } else {
-        throw new Error(data.error || 'Failed to start analysis');
+        throw new Error(data.error || 'Failed to generate summary');
       }
 
     } catch (error) {
       console.error('Error generating summary:', error);
-      // Fallback to a basic summary if OpenAI fails
-      const fallbackSummary = `AI-Generated Summary: Unable to generate detailed summary at this time. Please review the document manually for key clinical findings and recommendations.`;
+      // Fallback to a basic summary if AI generation fails
+      const fallbackSummary = `Ollama-Generated Summary: Unable to generate detailed summary at this time. Please review the document manually for key clinical findings and recommendations.`;
       
       setDocumentSummaries(prev => ({
         ...prev,
@@ -283,22 +253,22 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
                           onClick={() => setSelectedDoc(document.id)}
                           className="text-blue-600 hover:text-blue-900 inline-flex items-center"
                         >
-                          <Eye className="h-4 w-4 mr-1" />
+                          <img src="/src/assets/Icons_Actions_View.png" alt="View" className="h-4 w-4 mr-1" />
                           View
                         </button>
                         <button className="text-green-600 hover:text-green-900 inline-flex items-center">
-                          <Download className="h-4 w-4 mr-1" />
+                          <img src="/src/assets/Icons_Actions_Download.png" alt="Download" className="h-4 w-4 mr-1" />
                           Download
                         </button>
                         <button
-                          onClick={() => generateDocumentSummary(document.id)}
+                          onClick={() => generateSummary(document.id)}
                           disabled={isGeneratingSummary}
                           className="text-purple-600 hover:text-purple-900 inline-flex items-center disabled:opacity-50"
                         >
                           {isGeneratingSummary ? (
                             <Loader className="h-4 w-4 mr-1 animate-spin" />
                           ) : (
-                            <Brain className="h-4 w-4 mr-1" />
+                            <img src="/src/assets/Icons_Actions_Generate.png" alt="Generate" className="h-4 w-4 mr-1" />
                           )}
                           Summarize
                         </button>
@@ -308,7 +278,7 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
                       <tr>
                         <td colSpan={patientId ? 5 : 6} className="px-6 py-4 bg-purple-50 border-l-4 border-purple-200">
                           <div className="text-sm text-gray-700">
-                            <h4 className="font-medium text-purple-800 mb-2">AI-Generated Summary:</h4>
+                            <h4 className="font-medium text-purple-800 mb-2">Ollama-Generated Summary:</h4>
                             <p>{documentSummaries[document.id]}</p>
                           </div>
                         </td>

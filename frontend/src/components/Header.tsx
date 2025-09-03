@@ -54,7 +54,7 @@ export default function Header() {
               className="p-2 text-gray-400 hover:text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
               title="Sign out"
             >
-              <LogOut className="h-5 w-5" />
+              <img src="/src/assets/Icons_Miscellaneous_SignOut.png" alt="Sign Out" className="h-5 w-5" />
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Filter, Trash2 } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import AddPatientModal from './AddPatientModal';
 
@@ -23,17 +23,15 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
   });
 
   const handleDeletePatient = async (patientId: string, patientName: string) => {
-    if (window.confirm(`Are you sure you want to delete ${patientName}? This will also delete all associated documents and summaries. This action cannot be undone.`)) {
-      try {
-        setDeletingPatientId(patientId);
-        await deletePatient(patientId);
-        console.log(`Patient ${patientName} deleted successfully`);
-      } catch (error) {
-        console.error('Error deleting patient:', error);
-        alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      } finally {
-        setDeletingPatientId(null);
-      }
+    try {
+      setDeletingPatientId(patientId);
+      await deletePatient(patientId);
+      console.log(`Patient ${patientName} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setDeletingPatientId(null);
     }
   };
 
@@ -45,7 +43,7 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
           onClick={() => setShowAddModal(true)}
           className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
-          <Plus className="h-4 w-4 mr-2" />
+          <img src="/src/assets/Icons_Buttons_UploadDocuments.png" alt="Add Patient" className="h-4 w-4 mr-2" />
           Add Patient
         </button>
       </div>
@@ -58,16 +56,15 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
             placeholder="Search patients..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full pl-10 pr-3 h-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
         </div>
         
         <div className="relative">
-          <Filter className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full px-3 h-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
           >
             <option value="All">All Status</option>
             <option value="Active">Active</option>
@@ -133,17 +130,18 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
                     <div className="flex items-center space-x-3">
                       <button
                         onClick={() => onSelectPatient(patient.id)}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="text-blue-600 hover:text-blue-900 inline-flex items-center"
                       >
+                        <img src="/src/assets/Icons_Actions_View.png" alt="View" className="h-4 w-4 mr-1" />
                         View Details
                       </button>
                       <button
                         onClick={() => handleDeletePatient(patient.id, `${patient.firstName} ${patient.lastName}`)}
                         disabled={deletingPatientId === patient.id}
-                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
                         title="Delete patient"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4" />
                       </button>
                     </div>
                   </td>

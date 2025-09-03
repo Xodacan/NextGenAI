@@ -50,9 +50,6 @@ class Patient(models.Model):
         help_text="Room number, bed number, or ER designation"
     )
     
-    # Legacy room_number field (kept for backward compatibility)
-    room_number = models.CharField(max_length=50, blank=True, null=True)
-    
     status = models.CharField(
         max_length=32,
         choices=(

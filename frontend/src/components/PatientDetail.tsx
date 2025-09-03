@@ -1,24 +1,27 @@
 import React, { useState } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
-import { ArrowLeft, FileText, Plus, Brain, CheckCircle, Clock, AlertCircle, Trash2, Edit3 } from 'lucide-react';
+import { ArrowLeft, FileText, CheckCircle, AlertCircle, User, FolderOpen } from 'lucide-react';
 
 import DocumentUploadModal from './DocumentUploadModal';
 import DocumentViewerModal from './DocumentViewerModal';
+import HighlightedSummary from './HighlightedSummary';
 
 interface PatientDetailProps {
   patientId: string;
   onBack: () => void;
-  onViewDocuments: () => void;
   onEditSummary: (summaryId: string) => void;
 }
 
-export default function PatientDetail({ patientId, onBack, onViewDocuments, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
+export default function PatientDetail({ patientId, onBack, onEditSummary }: PatientDetailProps) {
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, deleteSummary, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'documents' | 'summary'>('details');
+  const [documentTypeFilter, setDocumentTypeFilter] = useState<string>('all');
+  const [dismissedGenerationPopup, setDismissedGenerationPopup] = useState(false);
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -26,6 +29,13 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
 
   // Check if we're generating a summary for this patient
   const isGeneratingForThisPatient = isGeneratingSummary && generatingSummaryFor === patientId;
+
+  // Reset dismissed state when generation starts
+  React.useEffect(() => {
+    if (isGeneratingForThisPatient) {
+      setDismissedGenerationPopup(false);
+    }
+  }, [isGeneratingForThisPatient]);
 
   if (!patient) {
     return <div>Patient not found</div>;
@@ -37,25 +47,20 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
       return;
     }
     
-    // setIsGenerating(true); // This line is removed as per the edit hint
     setShowSuccessMessage(false);
     try {
-      const summaryId = await generateSummary(patientId);
-      setSuccessMessage('Discharge summary generated successfully! OpenRoom has created a comprehensive summary based on your clinical documents.');
+      await generateSummary(patientId);
+      setSuccessMessage('Discharge summary generated successfully! OpenRoom has created a comprehensive summary based on your clinical documents. The summary is now visible in the Personal Details tab.');
       setShowSuccessMessage(true);
       
-      // Don't refresh summaries - this could overwrite local changes
-      // The generateSummary function already updates local state
-      
-      onEditSummary(summaryId);
+      // Don't redirect to summary editor - stay on patient details page
     } catch (error) {
       console.error('Failed to generate summary:', error);
       setSuccessMessage(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setShowSuccessMessage(true);
     } finally {
-      // setIsGenerating(false); // This line is removed as per the edit hint
-      // Hide success message after 5 seconds
-      setTimeout(() => setShowSuccessMessage(false), 5000);
+      // Hide success message after 8 seconds (longer for success message)
+      setTimeout(() => setShowSuccessMessage(false), 8000);
     }
   };
 
@@ -93,9 +98,10 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
         <div className="flex items-center space-x-3">
           <button
             onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            disabled={isGeneratingForThisPatient}
+            className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <img src="/src/assets/Icons_Buttons_UploadDocuments.png" alt="Upload" className="h-4 w-4 mr-2" />
             Upload Document
           </button>
           
@@ -109,48 +115,110 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 {isGeneratingForThisPatient ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    OpenRoom is generating your summary...
+                    Generating...
                   </>
                 ) : (
                   <>
-                    <Brain className="h-4 w-4 mr-2" />
+                    <img src="/src/assets/Icons_Buttons_GenerateSummary.png" alt="Generate Summary" className="h-4 w-4 mr-2" />
                     Generate Summary
                   </>
                 )}
               </button>
               
-              {isGeneratingForThisPatient && (
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                  </div>
-                  <span>OpenRoom is processing your documents...</span>
-                </div>
-              )}
+
             </div>
           ) : (
-            <button
-              onClick={() => onEditSummary(summary.id)}
-              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <FileText className="h-4 w-4 mr-2" />
-              {summary.status === 'Draft' ? 'Edit Summary' : 'View Summary'}
-            </button>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => onEditSummary(summary.id)}
+                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
+                {summary.status === 'Draft' ? 'Edit Summary' : 'View Summary'}
+              </button>
+              <button
+                onClick={() => deleteSummary(summary.id)}
+                className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                title="Delete summary"
+              >
+                <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4 mr-2" />
+                Delete
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {/* Status Message Area */}
-      {isGeneratingForThisPatient && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center space-x-3 mb-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-            <div>
-              <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
-              <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'details'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <User className="h-4 w-4" />
+              <span>Personal Details</span>
             </div>
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              activeTab === 'documents'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            <div className="flex items-center space-x-2">
+              <FolderOpen className="h-4 w-4" />
+              <span>Documents</span>
+              {isGeneratingForThisPatient && dismissedGenerationPopup && (
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Generating summary in background"></div>
+              )}
+            </div>
+          </button>
+          {summary && (
+            <button
+              onClick={() => setActiveTab('summary')}
+              className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'summary'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center space-x-2">
+                <FileText className="h-4 w-4" />
+                <span>Summary</span>
+              </div>
+            </button>
+          )}
+        </nav>
+      </div>
+
+      {/* Status Message Area */}
+      {isGeneratingForThisPatient && !dismissedGenerationPopup && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <div>
+                <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
+                <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setDismissedGenerationPopup(true)}
+              className="text-blue-600 hover:text-blue-800 transition-colors"
+              title="Dismiss (generation will continue in background)"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
           
           <div className="space-y-2">
@@ -167,6 +235,10 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               <span>Generating comprehensive summary</span>
             </div>
           </div>
+          
+          <div className="mt-3 text-xs text-blue-600">
+            💡 You can dismiss this notification and continue using other features while the summary generates in the background.
+          </div>
         </div>
       )}
 
@@ -177,64 +249,145 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
             ? 'bg-red-50 border-red-200' 
             : 'bg-green-50 border-green-200'
         }`}>
-          <div className="flex items-center">
-            {successMessage.includes('Failed') ? (
-              <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
-            ) : (
-              <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              {successMessage.includes('Failed') ? (
+                <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+              )}
+              <p className={`text-sm ${
+                successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
+              }`}>
+                {successMessage}
+              </p>
+            </div>
+            {!successMessage.includes('Failed') && summary && (
+              <button
+                onClick={() => onEditSummary(summary.id)}
+                className="ml-4 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+              >
+                View Summary
+              </button>
             )}
-            <p className={`text-sm ${
-              successMessage.includes('Failed') ? 'text-red-800' : 'text-green-800'
-            }`}>
-              {successMessage}
-            </p>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Patient Information</h3>
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm text-gray-500">Date of Birth</p>
-                <p className="font-medium">{new Date(patient.dateOfBirth).toLocaleDateString()}</p>
+      {/* Tab Content */}
+      {activeTab === 'details' && (
+        <div className="space-y-6">
+
+
+          {/* Alternative Discharge Summary Display */}
+          {!summary && documents.some(doc => doc.documentType === 'Discharge Summary') && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
+                <span className="text-sm text-gray-500">Generated Summary</span>
               </div>
-              <div>
-                <p className="text-sm text-gray-500">Admission Date</p>
-                <p className="font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                {(() => {
+                  const dischargeDoc = documents.find(doc => doc.documentType === 'Discharge Summary');
+                  if (dischargeDoc && dischargeDoc.summary) {
+                    return (
+                      <div>
+                        <p className="text-sm text-gray-700 line-clamp-3">
+                          {dischargeDoc.summary}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-sm text-gray-500">
+                            Generated on {new Date(dischargeDoc.uploadTimestamp).toLocaleDateString()}
+                          </span>
+                          <button
+                            onClick={() => {
+                              const dischargeDocIndex = documents.findIndex(doc => doc.documentType === 'Discharge Summary');
+                              if (dischargeDocIndex !== -1) {
+                                setViewerDocIndex(dischargeDocIndex);
+                              }
+                            }}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                          >
+                            View Full Summary →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-sm text-gray-500">
+                      Discharge summary document found but content not available
+                    </p>
+                  );
+                })()}
               </div>
-              <div>
-                <p className="text-sm text-gray-500 mb-1">Status</p>
-                <div className="flex items-center space-x-3">
-                  <select
-                    value={patient.status}
-                    onChange={handleStatusChange}
-                    disabled={isUpdatingStatus}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
-                  >
-                    <option value="Active">Active</option>
-                    <option value="Pending Discharge">Pending</option>
-                    <option value="Discharged">Discharged</option>
-                  </select>
-                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                    patient.status === 'Active'
-                      ? 'bg-green-100 text-green-800'
-                      : patient.status === 'Pending Discharge'
-                      ? 'bg-yellow-100 text-yellow-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {isUpdatingStatus ? 'Updating…' : patient.status}
-                  </span>
+            </div>
+          )}
+
+          {/* Patient Information Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Patient Information</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Date of Birth</p>
+                    <p className="font-medium">{new Date(patient.dateOfBirth).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Admission Date</p>
+                    <p className="font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Status</p>
+                    <div className="flex items-center space-x-3">
+                      <select
+                        value={patient.status}
+                        onChange={handleStatusChange}
+                        disabled={isUpdatingStatus}
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Pending Discharge">Pending</option>
+                        <option value="Discharged">Discharged</option>
+                      </select>
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        patient.status === 'Active'
+                          ? 'bg-green-100 text-green-800'
+                          : patient.status === 'Pending Discharge'
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {isUpdatingStatus ? 'Updating…' : patient.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Details</h3>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Location</p>
+                    <p className="font-medium">{formatOccupant(patient)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Patient ID</p>
+                    <p className="font-medium font-mono text-sm">{patient.id}</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      )}
 
-        <div className="lg:col-span-2 space-y-6">
-          {/* Summary Section - Moved above documents */}
+      {activeTab === 'documents' && (
+        <div className="space-y-6">
+          {/* Summary Section - Moved from Details tab */}
           {summary && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
@@ -242,19 +395,19 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                 <div className="flex items-center space-x-2">
                   {summary.status === 'Draft' && (
                     <>
-                      <Clock className="h-4 w-4 text-yellow-500" />
+                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Draft" className="h-4 w-4 text-yellow-500" />
                       <span className="text-sm text-yellow-600">Draft</span>
                     </>
                   )}
                   {summary.status === 'Pending Review' && (
                     <>
-                      <Edit3 className="h-4 w-4 text-blue-500" />
+                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Pending Review" className="h-4 w-4 text-blue-500" />
                       <span className="text-sm text-blue-600">Pending Review</span>
                     </>
                   )}
                   {summary.status === 'Approved' && (
                     <>
-                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <img src="/src/assets/Icons_Buttons_SummaryComplete.png" alt="Approved" className="h-4 w-4 text-green-500" />
                       <span className="text-sm text-green-600">Approved</span>
                     </>
                   )}
@@ -286,29 +439,67 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
               )}
             </div>
           )}
-
+          
           {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Clinical Documents</h3>
-              <span className="text-sm text-gray-500">{documents.length} document(s)</span>
+              <div className="flex items-center space-x-4">
+                {/* Document Type Filter */}
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="documentTypeFilter" className="text-sm font-medium text-gray-700">
+                    Filter by:
+                  </label>
+                  <select
+                    id="documentTypeFilter"
+                    value={documentTypeFilter}
+                    onChange={(e) => setDocumentTypeFilter(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  >
+                    <option value="all">All Types</option>
+                    {Array.from(new Set(documents.map(doc => doc.documentType)))
+                      .filter(type => type && type.trim() !== '')
+                      .sort()
+                      .map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                  </select>
+                </div>
+                <span className="text-sm text-gray-500">
+                  {documents.filter(doc => documentTypeFilter === 'all' || doc.documentType === documentTypeFilter).length} document(s)
+                </span>
+              </div>
             </div>
             
-            {documents.length === 0 ? (
+            {documents.filter(doc => documentTypeFilter === 'all' || doc.documentType === documentTypeFilter).length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                <p>No documents uploaded yet</p>
-                <p className="text-sm">Upload clinical documents to enable AI summary generation</p>
+                <p>{documentTypeFilter === 'all' ? 'No documents uploaded yet' : `No ${documentTypeFilter} documents found`}</p>
+                <p className="text-sm">
+                  {documentTypeFilter === 'all' 
+                    ? 'Upload clinical documents to enable AI summary generation'
+                    : `Try selecting a different document type or upload new ${documentTypeFilter} documents`
+                  }
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {documents.map((doc, index) => (
+                {documents
+                  .filter(doc => documentTypeFilter === 'all' || doc.documentType === documentTypeFilter)
+                  .map((doc, index) => (
                   <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 rounded-lg">
                     <div className="flex items-center space-x-3">
                       <FileText className="h-5 w-5 text-gray-400" />
                       <div>
                         <p className="font-medium text-gray-900">{doc.fileName}</p>
-                        <p className="text-sm text-gray-500">{doc.documentType}</p>
+                        <div className="flex items-center space-x-2">
+                          <span className="inline-flex px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full">
+                            {doc.documentType}
+                          </span>
+                          <span className="text-xs text-gray-400">
+                            {new Date(doc.uploadTimestamp).toLocaleDateString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3">
@@ -318,15 +509,12 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
                       >
                         View
                       </button>
-                      <p className="text-sm text-gray-500">
-                        {new Date(doc.uploadTimestamp).toLocaleDateString()}
-                      </p>
                       <button
                         onClick={() => deleteDocument(patientId, index)}
                         className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
                         title="Delete document"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -335,7 +523,18 @@ export default function PatientDetail({ patientId, onBack, onViewDocuments, onEd
             )}
           </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === 'summary' && summary && (
+        <div className="space-y-6">
+          <HighlightedSummary
+            highlightedSummary={summary.highlighted_summary || summary.generatedContent}
+            sourceUsage={summary.source_usage || {}}
+            sourceAttributions={summary.source_attributions}
+            totalCharacters={summary.total_characters || summary.generatedContent.length}
+          />
+        </div>
+      )}
 
       {showUploadModal && (
         <DocumentUploadModal

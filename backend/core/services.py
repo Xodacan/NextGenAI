@@ -45,6 +45,37 @@ class DocumentProcessingService:
             return None
     
     @staticmethod
+    def extract_text_from_bytes(content_bytes: bytes, file_name: str) -> Optional[str]:
+        """
+        Extract text content from file bytes (for streaming from OSS).
+        
+        Args:
+            content_bytes: File content as bytes
+            file_name: Name of the file with extension
+            
+        Returns:
+            Extracted text content or None if extraction fails
+        """
+        try:
+            file_extension = file_name.lower().split('.')[-1]
+            
+            if file_extension == 'pdf':
+                return DocumentProcessingService._extract_pdf_text_from_bytes(content_bytes)
+            elif file_extension in ['txt', 'md']:
+                return DocumentProcessingService._extract_text_from_bytes(content_bytes)
+            elif file_extension in ['doc', 'docx']:
+                # TODO: Add support for Word documents when python-docx is added
+                logger.warning(f"Word document support not yet implemented for {file_name}")
+                return None
+            else:
+                logger.warning(f"Unsupported file type: {file_extension} for {file_name}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error extracting text from bytes for {file_name}: {str(e)}")
+            return None
+    
+    @staticmethod
     def _extract_pdf_text(file_path: str) -> Optional[str]:
         """Extract text from PDF files."""
         try:
@@ -66,6 +97,29 @@ class DocumentProcessingService:
                 return file.read().strip()
         except Exception as e:
             logger.error(f"Error extracting text file content: {str(e)}")
+            return None
+    
+    @staticmethod
+    def _extract_text_from_bytes(content_bytes: bytes) -> Optional[str]:
+        """Extract text from plain text bytes."""
+        try:
+            return content_bytes.decode('utf-8').strip()
+        except Exception as e:
+            logger.error(f"Error extracting text from bytes: {str(e)}")
+            return None
+    
+    @staticmethod
+    def _extract_pdf_text_from_bytes(content_bytes: bytes) -> Optional[str]:
+        """Extract text from PDF bytes."""
+        try:
+            import io
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content_bytes))
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text.strip()
+        except Exception as e:
+            logger.error(f"Error extracting PDF text from bytes: {str(e)}")
             return None
     
     @staticmethod
@@ -211,10 +265,10 @@ class DocumentProcessingService:
     def prepare_for_ai_analysis(processed_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepare processed document data for AI analysis.
-        This function will be extended to integrate with Ollama later.
+        This function can handle both processed documents and raw patient documents.
         
         Args:
-            processed_data: Output from process_patient_documents
+            processed_data: Either output from process_patient_documents or raw patient data
             
         Returns:
             Data formatted for AI processing
@@ -222,6 +276,25 @@ class DocumentProcessingService:
         # Get the hardcoded template for the AI agent
         template_data = TemplateProcessingService.get_template_for_ai_agent()
         
+        # Check if this is raw patient data or processed data
+        if 'documents' in processed_data and processed_data['documents']:
+            # Check if documents have extractedText (processed) or need processing (raw)
+            first_doc = processed_data['documents'][0]
+            
+            # Check if this is the old processed format or current OSS format
+            if 'extractedText' in first_doc and 'processingStatus' in first_doc:
+                # This is old processed data format, use existing logic
+                return DocumentProcessingService._prepare_processed_data(processed_data, template_data)
+            else:
+                # This is current OSS format, process documents from OSS
+                return DocumentProcessingService._prepare_raw_patient_data(processed_data, template_data)
+        
+        # Fallback for unexpected data structure
+        return DocumentProcessingService._create_fallback_data(processed_data, template_data)
+    
+    @staticmethod
+    def _prepare_processed_data(processed_data: Dict[str, Any], template_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle already processed document data."""
         # Extract key information that the AI agent should look for
         extracted_info = {
             'patient_identifiers': [],
@@ -298,6 +371,141 @@ class DocumentProcessingService:
         }
         
         return ai_ready_data
+    
+    @staticmethod
+    def _prepare_raw_patient_data(patient_data: Dict[str, Any], template_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle raw patient documents by processing them from OSS using streaming."""
+        try:
+            from alibaba_cloud.services.oss_service import AlibabaOSSService
+            
+            oss_service = AlibabaOSSService()
+            documents = patient_data.get('documents', [])
+            processed_docs = []
+            total_text_length = 0
+            
+            print(f"Processing {len(documents)} documents from OSS for AI analysis using streaming...")
+            print(f"Document structure check - first doc keys: {list(documents[0].keys()) if documents else 'No documents'}")
+            
+            for doc in documents:
+                try:
+                    if 'oss_path' in doc and doc['oss_path']:
+                        # Stream document content directly from OSS (no temp files)
+                        oss_response = oss_service.bucket.get_object(doc['oss_path'])
+                        content_bytes = oss_response.read()
+                        
+                        # Extract text content from bytes directly
+                        text_content = DocumentProcessingService.extract_text_from_bytes(
+                            content_bytes, 
+                            doc['fileName']
+                        )
+                        
+                        if text_content:
+                            processed_docs.append({
+                                'fileName': doc['fileName'],
+                                'documentType': doc.get('documentType', 'Unknown'),
+                                'textContent': text_content,
+                                'textLength': len(text_content)
+                            })
+                            total_text_length += len(text_content)
+                            print(f"✓ Processed {doc['fileName']}: {len(text_content)} characters")
+                        else:
+                            print(f"⚠ Could not extract text from {doc['fileName']}")
+                    else:
+                        print(f"⚠ Skipping document without OSS path: {doc.get('fileName', 'Unknown')}")
+                        
+                except Exception as e:
+                    print(f"⚠ Error processing {doc.get('fileName', 'Unknown')}: {str(e)}")
+                    continue
+            
+            # Extract key information from processed documents
+            extracted_info = {
+                'patient_identifiers': [],
+                'diagnostic_tests': [],
+                'procedures': [],
+                'medications': [],
+                'vital_signs': [],
+                'assessments': []
+            }
+            
+            for doc in processed_docs:
+                text = doc['textContent'].lower()
+                
+                # Look for patient identifiers
+                if any(word in text for word in ['name', 'patient', 'dob', 'birth', 'age', 'gender']):
+                    extracted_info['patient_identifiers'].append({
+                        'document': doc['fileName'],
+                        'content': doc['textContent'][:200] + '...' if len(doc['textContent']) > 200 else doc['textContent']
+                    })
+                
+                # Look for diagnostic tests
+                if any(word in text for word in ['test', 'lab', 'blood', 'urine', 'x-ray', 'ct', 'mri', 'scan', 'result']):
+                    extracted_info['diagnostic_tests'].append({
+                        'document': doc['fileName'],
+                        'content': doc['textContent'][:200] + '...' if len(doc['textContent']) > 200 else doc['textContent']
+                    })
+                
+                # Look for procedures
+                if any(word in text for word in ['procedure', 'surgery', 'operation', 'treatment', 'therapy']):
+                    extracted_info['procedures'].append({
+                        'document': doc['fileName'],
+                        'content': doc['textContent'][:200] + '...' if len(doc['textContent']) > 200 else doc['textContent']
+                    })
+                
+                # Look for medications
+                if any(word in text for word in ['medication', 'drug', 'prescription', 'dose', 'mg', 'ml']):
+                    extracted_info['medications'].append({
+                        'document': doc['fileName'],
+                        'content': doc['textContent'][:200] + '...' if len(doc['textContent']) > 200 else doc['textContent']
+                    })
+            
+            ai_ready_data = {
+                'patientId': patient_data.get('patientId', ''),
+                'documentCount': len(processed_docs),
+                'totalTextLength': total_text_length,
+                'documentTypes': list(set([doc['documentType'] for doc in processed_docs])),
+                'combinedText': '\n\n'.join([doc['textContent'] for doc in processed_docs]),
+                'individualDocuments': processed_docs,
+                'processingMetadata': {
+                    'timestamp': 'processed_on_demand',
+                    'successRate': f"{len(processed_docs)}/{len(documents)}",
+                    'averageDocumentLength': total_text_length / max(len(processed_docs), 1)
+                },
+                'extractedInformation': extracted_info,
+                'dischargeSummaryTemplate': {
+                    'templateId': template_data['id'],
+                    'templateName': template_data['name'],
+                    'templateContent': template_data['template_content'],
+                    'placeholderVariables': template_data['placeholder_variables'],
+                    'templateType': template_data['template_type'],
+                    'source': template_data['source']
+                }
+            }
+            
+            print(f"Successfully processed {len(processed_docs)} documents for AI analysis")
+            return ai_ready_data
+            
+        except Exception as e:
+            print(f"Error processing raw patient data: {str(e)}")
+            return DocumentProcessingService._create_fallback_data(patient_data, template_data)
+    
+    @staticmethod
+    def _create_fallback_data(patient_data: Dict[str, Any], template_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create fallback data structure when processing fails."""
+        return {
+            'patientId': patient_data.get('patientId', ''),
+            'documentCount': 0,
+            'totalTextLength': 0,
+            'documentTypes': [],
+            'combinedText': '',
+            'individualDocuments': [],
+            'processingMetadata': {
+                'timestamp': 'fallback',
+                'successRate': '0/0',
+                'averageDocumentLength': 0
+            },
+            'extractedInformation': {},
+            'dischargeSummaryTemplate': template_data
+        }
 
 
 class TemplateProcessingService:
@@ -368,43 +576,43 @@ class TemplateProcessingService:
             template_content = """DISCHARGE SUMMARY
 
 PATIENT INFORMATION:
-Patient Name: [EXTRACT FROM DOCUMENTS]
-Date of Birth: [EXTRACT FROM DOCUMENTS]
-Admission Date: [EXTRACT FROM DOCUMENTS]
-Room/Bed: [EXTRACT FROM DOCUMENTS]
-Discharge Date: [CURRENT DATE]
+Patient Name: [PROG: EXTRACT FROM DOCUMENTS]
+Date of Birth: [PROG: EXTRACT FROM DOCUMENTS]
+Admission Date: [PROG: EXTRACT FROM DOCUMENTS]
+Room/Bed: [PROG: EXTRACT FROM DOCUMENTS]
+Discharge Date: [PROG: CURRENT DATE]
 
 PRIMARY DIAGNOSIS:
-[EXTRACT PRIMARY DIAGNOSIS FROM MEDICAL DOCUMENTS]
+[PROG: EXTRACT PRIMARY DIAGNOSIS FROM MEDICAL DOCUMENTS]
 
 SECONDARY DIAGNOSES:
-[EXTRACT SECONDARY DIAGNOSES FROM MEDICAL DOCUMENTS]
+[PROG: EXTRACT SECONDARY DIAGNOSES FROM MEDICAL DOCUMENTS]
 
 PROCEDURES PERFORMED:
-[LIST ALL PROCEDURES PERFORMED FROM MEDICAL DOCUMENTS]
+[SURG: LIST ALL PROCEDURES PERFORMED FROM MEDICAL DOCUMENTS]
 
 HOSPITAL COURSE:
-[DESCRIBE HOSPITAL STAY BASED ON MEDICAL DOCUMENTS]
+[PROG: DESCRIBE HOSPITAL STAY BASED ON MEDICAL DOCUMENTS]
 
 DIAGNOSTIC TESTS:
-[LIST ALL TESTS PERFORMED AND THEIR RESULTS FROM MEDICAL DOCUMENTS]
+[LAB: LIST ALL TESTS PERFORMED AND THEIR RESULTS FROM MEDICAL DOCUMENTS]
 
 MEDICATIONS ON DISCHARGE:
-[LIST ALL MEDICATIONS PRESCRIBED FROM MEDICAL DOCUMENTS]
+[MED: LIST ALL MEDICATIONS PRESCRIBED FROM MEDICAL DOCUMENTS]
 
 DISCHARGE INSTRUCTIONS:
-[EXTRACT DISCHARGE INSTRUCTIONS FROM MEDICAL DOCUMENTS]
+[DISCH: EXTRACT DISCHARGE INSTRUCTIONS FROM MEDICAL DOCUMENTS]
 
 FOLLOW-UP PLANS:
-[EXTRACT FOLLOW-UP PLANS FROM MEDICAL DOCUMENTS]
+[PROG: EXTRACT FOLLOW-UP PLANS FROM MEDICAL DOCUMENTS]
 
 CONDITION AT DISCHARGE:
-[DESCRIBE PATIENT'S CONDITION AT DISCHARGE FROM MEDICAL DOCUMENTS]
+[PROG: DESCRIBE PATIENT'S CONDITION AT DISCHARGE FROM MEDICAL DOCUMENTS]
 
 DISCHARGING PHYSICIAN:
-[EXTRACT PHYSICIAN NAME FROM MEDICAL DOCUMENTS]
+[PROG: EXTRACT PHYSICIAN NAME FROM MEDICAL DOCUMENTS]
 
-IMPORTANT: Replace all bracketed text with actual information extracted from the patient's medical documents. If information is not available, state "Not documented"."""
+IMPORTANT: Replace all bracketed text with actual information extracted from the patient's medical documents. Use the source tags [TYPE: information] format. If information is not available, state "Not documented"."""
         
         return {
             'id': 'hardcoded_template',
@@ -452,6 +660,8 @@ IMPORTANT: Replace all bracketed text with actual information extracted from the
             r'\{date_of_birth\}': '[EXTRACT DATE OF BIRTH FROM DOCUMENTS]',
             r'\{admission_date\}': '[EXTRACT ADMISSION DATE FROM DOCUMENTS]',
             r'\{room_number\}': '[EXTRACT ROOM/BED NUMBER FROM DOCUMENTS]',
+            r'\{occupant_type\}': '[EXTRACT OCCUPANT TYPE (Room/Bed/ER Patient) FROM DOCUMENTS]',
+            r'\{occupant_value\}': '[EXTRACT ROOM/BED NUMBER OR ER DESIGNATION FROM DOCUMENTS]',
             r'\{current_date\}': '[CURRENT DATE]',
             r'\{primary_diagnosis\}': '[EXTRACT PRIMARY DIAGNOSIS FROM DOCUMENTS]',
             r'\{secondary_diagnoses\}': '[EXTRACT SECONDARY DIAGNOSES FROM DOCUMENTS]',

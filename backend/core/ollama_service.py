@@ -104,22 +104,34 @@ Instructions: Generate a complete discharge summary using the template structure
 """
 
     prompt = ChatPromptTemplate.from_template(system_template)
-    model = OllamaLLM(
-        model=model_name,
-        num_predict=num_predict,
-        temperature=temperature,
-        top_p=top_p,
-    )
-    chain = prompt | model
-
+    
     try:
+        print(f"🤖 Creating Ollama LLM with model: {model_name}")
+        model = OllamaLLM(
+            model=model_name,
+            base_url="http://localhost:11434",  # Explicitly set local Ollama URL
+            num_predict=num_predict,
+            temperature=temperature,
+            top_p=top_p,
+        )
+        print(f"✅ Ollama LLM created successfully")
+        
+        chain = prompt | model
+        print(f"✅ Chain created successfully")
+        
+        print(f"📝 Invoking chain with documents length: {len(documents_text)}")
         result = chain.invoke({
             "documents": documents_text,
             "question": "generate a discharge summary according to the template provided, using the medical documents",
             "discharge_template": template_text or "",
         })
+        print(f"✅ Chain invocation successful, result type: {type(result)}")
         return str(result)
+        
     except Exception as exc:
+        print(f"❌ Error in Ollama chain: {exc}")
+        import traceback
+        traceback.print_exc()
         return f"Error generating summary: {exc}"
 
 
@@ -127,16 +139,19 @@ class OllamaService:
     """Service for integrating with Ollama for medical summary generation."""
     
     @staticmethod
-    def generate_patient_summary(patient_data: Dict[str, Any], template_content: str) -> str:
+    def generate_patient_summary_with_sources(patient_data: Dict[str, Any], template_content: str) -> Dict[str, Any]:
         """
-        Generate a discharge summary for a patient using Ollama.
+        Generate a discharge summary for a patient using Ollama with source tracking.
         
         Args:
             patient_data: Patient data including documents
             template_content: Discharge summary template content
             
         Returns:
-            Generated discharge summary text
+            Dictionary containing:
+            - summary: Generated discharge summary text
+            - source_usage: Document type usage statistics
+            - highlighted_summary: Summary with source highlights
         """
         try:
             # Prepare patient record for Ollama with better context
@@ -153,68 +168,458 @@ class OllamaService:
             patient_info = {
                 "documents": documents,
                 "patient_id": patient_data.get("patientId", ""),
+                "patient_name": patient_data.get("patientName", ""),
+                "patient_dob": patient_data.get("patientDOB", ""),
+                "patient_gender": patient_data.get("patientGender", ""),
+                "admission_date": patient_data.get("admissionDate", ""),
+                "room_number": patient_data.get("roomNumber", ""),
                 "document_count": patient_data.get("documentCount", 0),
                 "document_types": patient_data.get("documentTypes", []),
                 "total_text_length": patient_data.get("totalTextLength", 0),
                 "processing_metadata": patient_data.get("processingMetadata", {})
             }
             
-            # Add specific instructions for the agent
+            # Get current date for discharge
+            from datetime import datetime
+            current_date = datetime.now().strftime("%d/%m/%Y")
+            
+            # Add specific instructions for the agent with source tracking
             enhanced_template = f"""
-IMPORTANT INSTRUCTIONS FOR THE AGENT:
+🚨 CRITICAL INSTRUCTION: FOLLOW THE DISCHARGE TEMPLATE EXACTLY 🚨
 
-1. CAREFULLY READ ALL MEDICAL DOCUMENTS provided below
-2. EXTRACT REAL PATIENT INFORMATION from the documents:
-   - Patient's actual name, age, gender, and demographics
-   - Real diagnostic tests performed and their results
-   - Actual procedures, treatments, and medications administered
-   - Real medical history and current condition
-   - Actual discharge instructions and follow-up plans
+You are a medical AI assistant. Your task is to generate a discharge summary that follows the provided template structure.
 
-3. USE THIS TEMPLATE STRUCTURE as a guide, but fill in ALL fields with REAL DATA from the documents
-4. NEVER use placeholder text like [Patient Name], [Diagnostic test], [Any additional treatments]
-5. Replace ALL placeholders with actual patient information extracted from the medical documents
-6. If information is missing, state "Not documented" rather than leaving placeholders
+FIRST LINE TEST: You MUST start your response with exactly this line:
+SOURCE_TRACKING_ENABLED: YES
 
-KEY INFORMATION TO EXTRACT:
-{chr(10).join([f"- {category.replace('_', ' ').title()}: {len(items)} items found" for category, items in patient_data.get('extractedInformation', {}).items() if items])}
+🚨 TEMPLATE-FOCUSED APPROACH 🚨
+- You MUST follow the exact template structure provided below
+- Fill ONLY the sections that are in the template
+- Do NOT add sections that are not in the template
+- Do NOT summarize all documents - only include information relevant to the template sections
+- Let the template guide what information to include
 
-TEMPLATE TO FILL WITH REAL DATA:
-{template_content}
+🚨 CRITICAL: USE TEMPLATE AS YOUR GUIDE 🚨
+- Read the template structure carefully
+- Only include information that fits the template sections
+- If a template section asks for specific information, look for it in the documents
+- If a template section is not relevant to this patient, write "Not applicable"
+- If information is missing for a required template section, write "Not documented"
+
+PATIENT INFORMATION PROVIDED:
+- Patient ID: {patient_info.get('patient_id', 'Not provided')}
+- Patient Name: {patient_info.get('patient_name', 'Not provided')}
+- Date of Birth: {patient_info.get('patient_dob', 'Not provided')}
+- Gender: {patient_info.get('patient_gender', 'Not provided')}
+- Admission Date: {patient_info.get('admission_date', 'Not provided')}
+- Room Number: {patient_info.get('room_number', 'Not provided')}
+- Current Date: {current_date}
+- Use {current_date} as the discharge date
+
+REQUIRED FORMAT FOR ALL INFORMATION:
+- [LAB: information] for Lab Results
+- [RAD: information] for Radiology Report  
+- [PROG: information] for Progress Notes
+- [DISCH: information] for Discharge Instructions
+- [MED: information] for Medication List
+- [VITALS: information] for Vital Signs
+- [CONSULT: information] for Consultation Notes
+- [SURG: information] for Surgery Notes
+- [ED: information] for Emergency Department Notes
+- [NURSING: information] for Nursing Notes
+- [PATH: information] for Pathology Report
+- [PE: information] for Physical Examination
+- [H&P: information] for History and Physical
+- [OP: information] for Operative Report
+- [SYSTEM: information] for system-generated information like discharge date
+
+🚨 CRITICAL RULES:
+1. START with "SOURCE_TRACKING_ENABLED: YES"
+2. FOLLOW THE TEMPLATE STRUCTURE EXACTLY - do not create your own format
+3. ONLY include information that fits the template sections
+4. EVERY piece of information MUST have a source tag
+5. Use the exact format [TYPE: information]
+6. If information is missing for a template section, write "Not documented"
+7. If a template section is not applicable, write "Not applicable"
+8. Use {current_date} as the discharge date
+9. Let the template guide what to include - don't summarize everything
 
 DOCUMENTS TO ANALYZE:
-{chr(10).join([f"=== {doc['title']} ({doc['type']}) ==={chr(10)}{doc['content'][:1000]}{'...' if len(doc['content']) > 1000 else ''}" for doc in documents])}
+{chr(10).join([f"=== {doc['title']} ({doc['type']}) ==={chr(10)}{doc['content'][:1500]}{'...' if len(doc['content']) > 1500 else ''}" for doc in documents])}
 
-REMEMBER: Fill in every field with actual patient information. No placeholder text should remain in the final summary. Use the extracted information above to guide your analysis."""
+TEMPLATE TO FOLLOW EXACTLY:
+{template_content}
+
+🚨 FINAL REMINDER: 
+- Follow the template structure exactly
+- Only include information that fits the template sections
+- Every piece of information MUST have a source tag
+- Start with "SOURCE_TRACKING_ENABLED: YES"
+- Use {current_date} as the discharge date
+- Let the template guide what information to include"""
+            
+            # Debug: Log the template content being passed
+            print(f"🔍 Template content length: {len(template_content)}")
+            print(f"🔍 Template content preview: {template_content[:500]}...")
+            print(f"🔍 Enhanced template length: {len(enhanced_template)}")
             
             # Generate summary using Ollama with enhanced template
+            # Try different model parameters for better source tracking compliance
             summary = generate_discharge_summary_from_object(
                 patient_record=patient_info,
                 template_text=enhanced_template,
-                model_name="mistral",  # Can be configured
-                num_predict=2048,      # Increased for longer summaries
-                temperature=0.2,       # Lower temperature for more focused output
-                top_p=0.9
+                model_name="llama3.2",   # Use available Llama model
+                num_predict=4096,      # Increased for longer summaries
+                temperature=0.1,       # Very low temperature for more focused output
+                top_p=0.8
             )
             
+            # Process the summary to extract source information
+            source_usage = {}
+            source_attributions = {}  # Store actual document content for each source
+            highlighted_summary = summary
+            clean_summary = summary
+            
+            # Debug: Log the raw summary to see what AI generated
+            print(f"🔍 Raw AI Summary (first 500 chars): {summary[:500]}...")
+            
+            # Check if AI understood the source tracking instruction
+            if "SOURCE_TRACKING_ENABLED: YES" in summary:
+                print("✅ AI understood source tracking instruction")
+            else:
+                print("❌ AI did NOT understand source tracking instruction")
+                # Try to inject source tags as a fallback
+                summary = OllamaService._inject_source_tags_fallback(summary, documents)
+            
+            # Extract source tags and calculate usage
+            import re
+            # More flexible pattern to catch various formats
+            source_patterns = [
+                r'\[([A-Z&]+):\s*([^\]]+)\]',  # Standard format: [TYPE: content]
+                r'\[([A-Z&]+):([^\]]+)\]',     # No space: [TYPE:content]
+                r'\[([A-Z&]+)\s*:\s*([^\]]+)\]', # Extra spaces: [TYPE : content]
+                r'\[([A-Z&]+)\s*:\s*([^\]]+)\]', # Mixed spaces: [TYPE: content]
+            ]
+            
+            matches = []
+            for pattern in source_patterns:
+                pattern_matches = re.findall(pattern, summary)
+                matches.extend(pattern_matches)
+                if pattern_matches:
+                    print(f"🔍 Pattern '{pattern}' found {len(pattern_matches)} matches")
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_matches = []
+            for match in matches:
+                if match not in seen:
+                    seen.add(match)
+                    unique_matches.append(match)
+            matches = unique_matches
+            
+            print(f"🔍 Total unique source tags found: {len(matches)}")
+            
+            for source_type, content in matches:
+                print(f"🔍 Found source tag: {source_type} -> {content[:50]}...")
+                
+                # Map source types to full document types
+                source_mapping = {
+                    'LAB': 'Lab Results',
+                    'RAD': 'Radiology Report', 
+                    'PROG': 'Progress Notes',
+                    'DISCH': 'Discharge Instructions',
+                    'MED': 'Medication List',
+                    'VITALS': 'Vital Signs',
+                    'CONSULT': 'Consultation Notes',
+                    'SURG': 'Surgery Notes',
+                    'ED': 'Emergency Department Notes',
+                    'NURSING': 'Nursing Notes',
+                    'PATH': 'Pathology Report',
+                    'PE': 'Physical Examination',
+                    'H&P': 'History and Physical',
+                    'OP': 'Operative Report',
+                    'SYSTEM': 'System Generated'  # For discharge date, etc.
+                }
+                
+                full_type = source_mapping.get(source_type, source_type)
+                if full_type not in source_usage:
+                    source_usage[full_type] = 0
+                source_usage[full_type] += len(content.strip())
+                
+                # Find the source document content for attribution
+                source_doc_content = None
+                for doc in documents:
+                    if doc.get('type', '').lower() == full_type.lower():
+                        source_doc_content = doc.get('content', '')
+                        break
+                
+                # Store attribution information
+                attribution_key = f"{source_type}_{content[:30].replace(' ', '_')}"
+                source_attributions[attribution_key] = {
+                    'source_type': source_type,
+                    'full_type': full_type,
+                    'content': content.strip(),
+                    'source_document': source_doc_content[:500] if source_doc_content else "Source document not found"
+                }
+                
+                print(f"🔍 Mapped {source_type} to {full_type}, added {len(content.strip())} characters")
+            
+            # Create clean summary (remove source tags)
+            # Use the first pattern to clean the summary
+            clean_summary = re.sub(source_patterns[0], r'\2', summary)
+            
+            # Remove excessive asterisks and formatting symbols to make it look like a typed document
+            clean_summary = OllamaService._clean_document_formatting(clean_summary)
+            
+            # Also clean the highlighted summary
+            highlighted_summary = OllamaService._clean_document_formatting(highlighted_summary)
+            
+            print(f"🔍 Final source usage: {source_usage}")
+            print(f"🔍 Total characters: {len(clean_summary)}")
+            print(f"🔍 Source character count: {sum(source_usage.values())}")
+            
             logger.info(f"Successfully generated summary for patient {patient_data.get('patientId')}")
-            return summary
+            return {
+                'summary': clean_summary,
+                'highlighted_summary': highlighted_summary,
+                'source_usage': source_usage,
+                'source_attributions': source_attributions,
+                'total_characters': len(clean_summary),
+                'source_character_count': sum(source_usage.values())
+            }
             
         except Exception as e:
             logger.error(f"Error generating summary with Ollama: {str(e)}")
-            return f"Error generating summary: {str(e)}"
+            return {
+                'summary': f"Error generating summary: {str(e)}",
+                'highlighted_summary': f"Error generating summary: {str(e)}",
+                'source_usage': {},
+                'source_attributions': {},
+                'total_characters': 0,
+                'source_character_count': 0
+            }
     
     @staticmethod
-    def create_summary_file(patient_name: str, summary_content: str) -> str:
+    def _clean_document_formatting(text: str) -> str:
         """
-        Create a summary file and return the filename.
+        Clean up document formatting to make it look like a typed document.
+        Removes excessive asterisks, bullet points, and other formatting symbols.
+        
+        Args:
+            text: Raw text with formatting symbols
+            
+        Returns:
+            Cleaned text that looks like a typed document
+        """
+        import re
+        
+        # Remove excessive asterisks (3 or more in a row)
+        text = re.sub(r'\*{3,}', '', text)
+        
+        # Remove bullet points and list markers
+        text = re.sub(r'^\s*[\*\-\+]\s+', '', text, flags=re.MULTILINE)
+        
+        # Remove excessive dashes
+        text = re.sub(r'-{3,}', '', text)
+        
+        # Remove excessive equals signs
+        text = re.sub(r'={3,}', '', text)
+        
+        # Remove excessive underscores
+        text = re.sub(r'_{3,}', '', text)
+        
+        # Clean up multiple spaces
+        text = re.sub(r' {2,}', ' ', text)
+        
+        # Clean up multiple newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        # Remove leading/trailing whitespace from each line
+        lines = text.split('\n')
+        cleaned_lines = [line.strip() for line in lines]
+        text = '\n'.join(cleaned_lines)
+        
+        return text.strip()
+
+    @staticmethod
+    def _inject_source_tags_fallback(summary: str, documents: list) -> str:
+        """
+        Fallback method to inject source tags into summary if AI failed to include them.
+        
+        Args:
+            summary: Generated summary without source tags
+            documents: List of source documents
+            
+        Returns:
+            Summary with injected source tags
+        """
+        try:
+            print("🔄 Attempting to inject source tags as fallback...")
+            
+            # Create a mapping of document types to their content
+            doc_type_mapping = {}
+            for doc in documents:
+                doc_type = doc.get('type', 'Unknown')
+                content = doc.get('content', '')
+                if doc_type not in doc_type_mapping:
+                    doc_type_mapping[doc_type] = []
+                doc_type_mapping[doc_type].append(content)
+            
+            # Map document types to source tags
+            type_mapping = {
+                'Lab Results': 'LAB',
+                'Radiology Report': 'RAD',
+                'Progress Notes': 'PROG',
+                'Discharge Instructions': 'DISCH',
+                'Medication List': 'MED',
+                'Vital Signs': 'VITALS',
+                'Consultation Notes': 'CONSULT',
+                'Surgery Notes': 'SURG',
+                'Emergency Department Notes': 'ED',
+                'Nursing Notes': 'NURSING',
+                'Pathology Report': 'PATH',
+                'Physical Examination': 'PE',
+                'History and Physical': 'H&P',
+                'Operative Report': 'OP'
+            }
+            
+            # Try to inject source tags for common medical terms
+            import re
+            
+            # Common patterns to tag - more comprehensive
+            patterns_to_tag = [
+                # Patient Information
+                (r'Patient Name:\s*([^\n]+)', 'PROG'),
+                (r'Name:\s*([^\n]+)', 'PROG'),
+                (r'Date of Birth:\s*([^\n]+)', 'PROG'),
+                (r'DOB:\s*([^\n]+)', 'PROG'),
+                (r'Age:\s*([^\n]+)', 'PROG'),
+                (r'Gender:\s*([^\n]+)', 'PROG'),
+                (r'Room:\s*([^\n]+)', 'PROG'),
+                (r'Bed:\s*([^\n]+)', 'PROG'),
+                
+                # Vital Signs
+                (r'Blood Pressure:\s*([^\n]+)', 'VITALS'),
+                (r'BP:\s*([^\n]+)', 'VITALS'),
+                (r'Heart Rate:\s*([^\n]+)', 'VITALS'),
+                (r'HR:\s*([^\n]+)', 'VITALS'),
+                (r'Temperature:\s*([^\n]+)', 'VITALS'),
+                (r'Temp:\s*([^\n]+)', 'VITALS'),
+                (r'Respiratory Rate:\s*([^\n]+)', 'VITALS'),
+                (r'RR:\s*([^\n]+)', 'VITALS'),
+                (r'Oxygen Saturation:\s*([^\n]+)', 'VITALS'),
+                (r'SpO2:\s*([^\n]+)', 'VITALS'),
+                
+                # Medications
+                (r'Medications?:\s*([^\n]+)', 'MED'),
+                (r'Medication List:\s*([^\n]+)', 'MED'),
+                (r'Current Medications:\s*([^\n]+)', 'MED'),
+                (r'Drugs:\s*([^\n]+)', 'MED'),
+                
+                # Lab Results
+                (r'Lab Results?:\s*([^\n]+)', 'LAB'),
+                (r'Laboratory:\s*([^\n]+)', 'LAB'),
+                (r'Blood Work:\s*([^\n]+)', 'LAB'),
+                (r'Troponin:\s*([^\n]+)', 'LAB'),
+                (r'Creatinine:\s*([^\n]+)', 'LAB'),
+                (r'Glucose:\s*([^\n]+)', 'LAB'),
+                (r'Hemoglobin:\s*([^\n]+)', 'LAB'),
+                (r'White Blood Cell:\s*([^\n]+)', 'LAB'),
+                (r'WBC:\s*([^\n]+)', 'LAB'),
+                
+                # Imaging
+                (r'Imaging:\s*([^\n]+)', 'RAD'),
+                (r'X-ray:\s*([^\n]+)', 'RAD'),
+                (r'Chest X-ray:\s*([^\n]+)', 'RAD'),
+                (r'CXR:\s*([^\n]+)', 'RAD'),
+                (r'CT:\s*([^\n]+)', 'RAD'),
+                (r'MRI:\s*([^\n]+)', 'RAD'),
+                (r'Ultrasound:\s*([^\n]+)', 'RAD'),
+                (r'ECG:\s*([^\n]+)', 'RAD'),
+                (r'EKG:\s*([^\n]+)', 'RAD'),
+                
+                # Clinical Information
+                (r'Chief Complaint:\s*([^\n]+)', 'ED'),
+                (r'CC:\s*([^\n]+)', 'ED'),
+                (r'History of Present Illness:\s*([^\n]+)', 'H&P'),
+                (r'HPI:\s*([^\n]+)', 'H&P'),
+                (r'Physical Examination:\s*([^\n]+)', 'PE'),
+                (r'PE:\s*([^\n]+)', 'PE'),
+                (r'Assessment and Plan:\s*([^\n]+)', 'PROG'),
+                (r'A&P:\s*([^\n]+)', 'PROG'),
+                (r'Plan:\s*([^\n]+)', 'PROG'),
+                (r'Assessment:\s*([^\n]+)', 'PROG'),
+                
+                # Discharge
+                (r'Discharge Instructions:\s*([^\n]+)', 'DISCH'),
+                (r'Discharge Plan:\s*([^\n]+)', 'DISCH'),
+                (r'Follow-up:\s*([^\n]+)', 'DISCH'),
+                (r'Follow up:\s*([^\n]+)', 'DISCH'),
+                
+                # Procedures
+                (r'Procedure:\s*([^\n]+)', 'SURG'),
+                (r'Surgery:\s*([^\n]+)', 'SURG'),
+                (r'Operation:\s*([^\n]+)', 'SURG'),
+                (r'PCI:\s*([^\n]+)', 'SURG'),
+                (r'Catheterization:\s*([^\n]+)', 'SURG'),
+                
+                # Consultations
+                (r'Consultation:\s*([^\n]+)', 'CONSULT'),
+                (r'Consult:\s*([^\n]+)', 'CONSULT'),
+                (r'Specialist:\s*([^\n]+)', 'CONSULT'),
+                
+                # Nursing
+                (r'Nursing Care:\s*([^\n]+)', 'NURSING'),
+                (r'Nursing Plan:\s*([^\n]+)', 'NURSING'),
+                (r'Care Plan:\s*([^\n]+)', 'NURSING'),
+            ]
+            
+            modified_summary = summary
+            
+            for pattern, source_tag in patterns_to_tag:
+                def replace_with_tag(match):
+                    content = match.group(1).strip()
+                    if content and content != "Not documented":
+                        return f"{match.group(0).split(':')[0]}: [{source_tag}: {content}]"
+                    return match.group(0)
+                
+                modified_summary = re.sub(pattern, replace_with_tag, modified_summary, flags=re.IGNORECASE)
+            
+            print(f"🔄 Fallback injection completed. Modified summary length: {len(modified_summary)}")
+            return modified_summary
+            
+        except Exception as e:
+            print(f"❌ Error in fallback source tag injection: {e}")
+            return summary
+    
+    @staticmethod
+    def generate_patient_summary(patient_data: Dict[str, Any], template_content: str) -> str:
+        """
+        Generate a discharge summary for a patient using Ollama (backward compatibility).
+        
+        Args:
+            patient_data: Patient data including documents
+            template_content: Discharge summary template content
+            
+        Returns:
+            Generated discharge summary text
+        """
+        result = OllamaService.generate_patient_summary_with_sources(patient_data, template_content)
+        return result.get('summary', 'Error generating summary')
+    
+    @staticmethod
+    def create_summary_file(patient_name: str, summary_content: str, doctor_id: str, patient_id: str) -> Dict[str, str]:
+        """
+        Create a summary file and upload it to Alibaba Cloud OSS.
         
         Args:
             patient_name: Name of the patient
             summary_content: Generated summary content
+            doctor_id: Doctor's Firebase UID
+            patient_id: Patient ID
             
         Returns:
-            Filename of the created summary
+            Dict containing filename and OSS information
         """
         try:
             # Clean patient name for filename
@@ -224,21 +629,60 @@ REMEMBER: Fill in every field with actual patient information. No placeholder te
             # Create filename
             filename = f"Discharge_summary_{clean_name}.txt"
             
-            # Create the file in media/patients/summaries/
-            from django.conf import settings
-            import os
+            # Import OSS service
+            from alibaba_cloud.services.oss_service import AlibabaOSSService
             
-            summaries_dir = os.path.join(settings.MEDIA_ROOT, 'patients', 'summaries')
-            os.makedirs(summaries_dir, exist_ok=True)
+            # Initialize OSS service
+            oss_service = AlibabaOSSService()
             
-            file_path = os.path.join(summaries_dir, filename)
+            # Convert summary content to bytes
+            summary_bytes = summary_content.encode('utf-8')
             
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(summary_content)
+            # Upload to OSS using the existing structure
+            upload_result = oss_service.upload_medical_document(
+                file_content=summary_bytes,
+                file_name=filename,
+                doctor_id=doctor_id,
+                patient_id=patient_id,
+                document_type="discharge_summaries"
+            )
             
-            logger.info(f"Created summary file: {filename}")
-            return filename
+            logger.info(f"Successfully uploaded summary to OSS: {upload_result['oss_path']}")
+            
+            return {
+                'filename': filename,
+                'oss_path': upload_result['oss_path'],
+                'url': upload_result['presigned_url'],
+                'file_size': upload_result['file_size']
+            }
             
         except Exception as e:
-            logger.error(f"Error creating summary file: {str(e)}")
-            return f"summary_{patient_name.replace(' ', '_')}.txt"
+            logger.error(f"Error uploading summary to OSS: {str(e)}")
+            # Fallback to local storage if OSS fails
+            try:
+                from django.conf import settings
+                import os
+                
+                summaries_dir = os.path.join(settings.MEDIA_ROOT, 'summaries')
+                os.makedirs(summaries_dir, exist_ok=True)
+                
+                file_path = os.path.join(summaries_dir, filename)
+                
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(summary_content)
+                
+                logger.warning(f"Fallback: Created summary file locally: {filename}")
+                return {
+                    'filename': filename,
+                    'oss_path': None,
+                    'url': f'/media/summaries/{filename}',
+                    'file_size': len(summary_content.encode('utf-8'))
+                }
+            except Exception as fallback_error:
+                logger.error(f"Fallback local storage also failed: {str(fallback_error)}")
+                return {
+                    'filename': filename,
+                    'oss_path': None,
+                    'url': None,
+                    'file_size': 0
+                }
