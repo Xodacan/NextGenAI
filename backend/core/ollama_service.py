@@ -3,6 +3,8 @@ from langchain_core.prompts import ChatPromptTemplate
 import os
 from typing import Dict, Any
 import logging
+import time
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -78,29 +80,15 @@ def generate_discharge_summary_from_object(
         return "No medical document content provided."
 
     system_template = """
-You are a medical professional tasked with generating a comprehensive discharge summary. Your role is to:
+Generate a discharge summary using the template structure below. Extract real patient information from the medical documents and replace all placeholder text with actual data. If information is missing, write "Not documented".
 
-1. CAREFULLY READ AND ANALYZE all provided medical documents
-2. EXTRACT REAL PATIENT INFORMATION including:
-   - Patient's actual name, age, gender
-   - Real diagnostic tests performed and their results
-   - Actual procedures, treatments, and medications given
-   - Real medical history and current condition
-   - Actual discharge instructions provided
-
-3. USE THE TEMPLATE AS A GUIDE, but fill in ALL placeholders with REAL INFORMATION from the documents
-4. NEVER use placeholder text like [Patient Name], [Diagnostic test], [Any additional treatments] - replace these with actual data
-5. If information is missing from documents, state "Not documented" rather than fabricating details
-
-IMPORTANT: The template below is just a structure guide. You must replace ALL placeholder text with actual patient information extracted from the medical documents.
-
-Template structure (fill in with real data):
+Template:
 {discharge_template}
 
-Medical documents to analyze:
+Medical documents:
 {documents}
 
-Instructions: Generate a complete discharge summary using the template structure above, but fill in every field with actual patient information from the documents. Do not leave any placeholder text - replace everything with real data or "Not documented" if information is unavailable.
+Generate the discharge summary now:
 """
 
     prompt = ChatPromptTemplate.from_template(system_template)
@@ -122,7 +110,6 @@ Instructions: Generate a complete discharge summary using the template structure
         print(f"📝 Invoking chain with documents length: {len(documents_text)}")
         result = chain.invoke({
             "documents": documents_text,
-            "question": "generate a discharge summary according to the template provided, using the medical documents",
             "discharge_template": template_text or "",
         })
         print(f"✅ Chain invocation successful, result type: {type(result)}")

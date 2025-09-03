@@ -10,6 +10,7 @@ interface PatientDetailProps {
   patientId: string;
   onBack: () => void;
   onEditSummary: (summaryId: string) => void;
+  initialTab?: 'details' | 'documents' | 'summary';
 }
 
 export default function PatientDetail({ patientId, onBack, onEditSummary }: PatientDetailProps) {
@@ -418,18 +419,49 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                 <p className="text-sm text-gray-700 line-clamp-3">
                   {summary.finalContent || summary.generatedContent}
                 </p>
-                {summary.status !== 'Approved' ? (
+                <div className="mt-2 flex items-center justify-between">
+                  {summary.status !== 'Approved' ? (
+                    <button
+                      onClick={() => onEditSummary(summary.id)}
+                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
+                      {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'}
+                    </button>
+                  ) : (
+                    <div className="text-sm text-gray-500">
+                      Summary finalized - view only
+                    </div>
+                  )}
                   <button
-                    onClick={() => onEditSummary(summary.id)}
-                    className="mt-2 text-blue-600 hover:text-blue-800 text-sm font-medium"
+                    onClick={() => {
+                      setConfirmationModal({
+                        isOpen: true,
+                        title: 'Delete Discharge Summary',
+                        message: 'Are you sure you want to delete this discharge summary? This action cannot be undone.',
+                        onConfirm: async () => {
+                          setShowSuccessMessage(false);
+                          try {
+                            await deleteSummaryDirect(summary.id);
+                            setSuccessMessage('Discharge summary has been deleted successfully.');
+                            setShowSuccessMessage(true);
+                            setTimeout(() => setShowSuccessMessage(false), 5000);
+                          } catch (error) {
+                            setSuccessMessage(`Failed to delete summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                            setShowSuccessMessage(true);
+                            setTimeout(() => setShowSuccessMessage(false), 8000);
+                          }
+                        },
+                        isDestructive: true
+                      });
+                    }}
+                    className="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+                    title="Delete summary"
                   >
-                    {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'} →
+                    <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4 mr-2" />
+                    Delete
                   </button>
-                ) : (
-                  <div className="mt-2 text-sm text-gray-500">
-                    Summary finalized - view only
-                  </div>
-                )}
+                </div>
               </div>
               
               {summary.approvalTimestamp && (
@@ -518,10 +550,106 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                       </button>
                     </div>
                   </div>
-                ))}
+                </div>
+                <button
+                  onClick={() => setDismissedGenerationPopup(true)}
+                  className="text-blue-600 hover:text-blue-800 transition-colors"
+                  title="Dismiss (generation will continue in background)"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
-            )}
-          </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span>Processing clinical documents</span>
+                </div>
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span>Analyzing medical content</span>
+                </div>
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span>Generating comprehensive summary</span>
+                </div>
+              </div>
+              
+              <div className="mt-3 text-xs text-blue-600">
+                💡 You can dismiss this notification and continue using other features while the summary generates in the background.
+              </div>
+            </div>
+          )}
+
+          {/* Discharge Summary Section */}
+          {!summary && documents.some(doc => doc.documentType === 'Discharge Summary') && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
+                <span className="text-sm text-gray-500">Generated Summary</span>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                {(() => {
+                  const dischargeDoc = documents.find(doc => doc.documentType === 'Discharge Summary');
+                  if (dischargeDoc && dischargeDoc.summary) {
+                    return (
+                      <div>
+                        <p className="text-sm text-gray-700 line-clamp-3">
+                          {dischargeDoc.summary}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-sm text-gray-500">
+                            Generated on {new Date(dischargeDoc.uploadTimestamp).toLocaleDateString()}
+                          </span>
+                          <button
+                            onClick={() => {
+                              const dischargeDocIndex = documents.findIndex(doc => doc.documentType === 'Discharge Summary');
+                              if (dischargeDocIndex !== -1) {
+                                setViewerDocIndex(dischargeDocIndex);
+                              }
+                            }}
+                            className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                          >
+                            View Full Summary →
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <p className="text-sm text-gray-500">
+                      Discharge summary document found but content not available
+                    </p>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Highlighted Summary - Only show if summary exists */}
+          {summary && (
+          <HighlightedSummary
+            highlightedSummary={summary.highlighted_summary || summary.generatedContent}
+            sourceUsage={summary.source_usage || {}}
+            sourceAttributions={summary.source_attributions}
+            totalCharacters={summary.total_characters || summary.generatedContent.length}
+          />
+          )}
+
+          {/* No Summary Message */}
+          {!summary && !documents.some(doc => doc.documentType === 'Discharge Summary') && !isGeneratingForThisPatient && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
+              <div className="text-gray-500">
+                <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Discharge Summary Available</h3>
+                <p className="text-sm text-gray-600">
+                  Generate a discharge summary from the Documents tab to see it here.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -548,6 +676,17 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
           onClose={() => setViewerDocIndex(null)}
         />
       )}
+      
+      <ConfirmationModal
+        isOpen={confirmationModal.isOpen}
+        onClose={() => setConfirmationModal(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmationModal.onConfirm}
+        title={confirmationModal.title}
+        message={confirmationModal.message}
+        isDestructive={confirmationModal.isDestructive}
+        confirmText="Delete"
+        cancelText="Cancel"
+      />
     </div>
   );
 }

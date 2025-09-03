@@ -34,6 +34,22 @@ def health_check(request):
         'framework': 'Django REST Framework'
     }, status=status.HTTP_200_OK)
 
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([])
+def ollama_health_check(request):
+    """
+    Health check endpoint to verify Ollama service is running.
+    """
+    from .ollama_service import OllamaService
+    
+    health_status = OllamaService.check_ollama_health()
+    
+    if health_status['status'] == 'healthy':
+        return Response(health_status, status=status.HTTP_200_OK)
+    else:
+        return Response(health_status, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
 
 @api_view(['GET'])
 @authentication_classes([])
@@ -359,8 +375,14 @@ class GenerateSummaryView(APIView):
                 'source_character_count': source_character_count
             }
             
-            # Add to patient documents
+            # Add to patient documents - remove existing discharge summaries first
             docs = patient.documents or []
+            
+            # Remove any existing discharge summaries to prevent duplicates
+            docs = [doc for doc in docs if doc.get('documentType') != 'Discharge Summary']
+            print(f"🧹 Removed existing discharge summaries, {len(docs)} documents remaining")
+            
+            # Add the new summary document
             docs.append(summary_doc)
             patient.documents = docs
             patient.save()

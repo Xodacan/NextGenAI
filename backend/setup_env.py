@@ -32,7 +32,8 @@ def setup_env():
     # Create .env content
     env_content = f"""# Django Settings
 DEBUG=True
-SECRET_KEY=django-insecure-+8!3j22nge8x@j0@la*!u527a2ywujv#f2j8d7w!pzf%z8b-n+
+# Generate a new secret key: python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+SECRET_KEY=your-secret-key-here
 
 # Firebase Configuration
 FIREBASE_PROJECT_ID={project_id}

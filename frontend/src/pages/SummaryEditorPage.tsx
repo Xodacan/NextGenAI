@@ -16,7 +16,8 @@ export default function SummaryEditorPage() {
   const handleBack = async () => {
     // Don't refresh summaries - this overwrites local changes
     // The local state is already updated and will persist
-    navigate(`/patients/${patientId}`);
+    // Navigate back to the summary tab of the patient
+    navigate(`/patients/${patientId}`, { state: { activeTab: 'summary' } });
   };
 
   return (

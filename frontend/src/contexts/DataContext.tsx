@@ -77,6 +77,7 @@ interface DataContextType {
   generateSummary: (patientId: string) => Promise<string>;
   updateSummary: (id: string, updates: Partial<DischargeSummary>) => Promise<void>;
   deleteSummary: (summaryId: string) => Promise<void>;
+  deleteSummaryDirect: (summaryId: string) => Promise<void>;
   refreshPatients: () => Promise<void>;
   refreshSummaries: () => Promise<void>;
 }
@@ -462,6 +463,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const generateSummary = async (patientId: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
+    
+    // Check if a summary already exists for this patient
+    const existingSummary = getPatientSummary(patientId);
+    if (existingSummary) {
+      throw new Error('A discharge summary already exists for this patient. Please delete the existing summary before generating a new one.');
+    }
     
     try {
       // Set global loading state
@@ -986,6 +993,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       generateSummary,
       updateSummary,
       deleteSummary,
+      deleteSummaryDirect,
       getPatientDocuments,
       getPatientSummary,
       refreshPatients,
