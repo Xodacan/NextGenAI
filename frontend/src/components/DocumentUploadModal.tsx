@@ -10,7 +10,7 @@ interface DocumentUploadModalProps {
 }
 
 export default function DocumentUploadModal({ patientId, onClose }: DocumentUploadModalProps) {
-  const { addDocument, refreshPatients } = useData();
+  const { addDocument, refreshPatients, showGlobalNotice } = useData();
   const { user } = useAuth();
   const [isDragOver, setIsDragOver] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -100,10 +100,15 @@ export default function DocumentUploadModal({ patientId, onClose }: DocumentUplo
       // Refresh the documents list to show the newly uploaded files
       await refreshPatients();
 
+      // Show success notification
+      const fileNames = selectedFiles.map(file => file.name).join(', ');
+      showGlobalNotice('success', 'Document Uploaded', `${fileNames} uploaded successfully`, true);
+
       onClose();
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload one or more files. Please try again.');
+      const fileNames = selectedFiles.map(file => file.name).join(', ');
+      showGlobalNotice('error', 'Upload Failed', `Failed to upload ${fileNames}. Please try again.`, true);
     } finally {
       setIsLoading(false);
     }

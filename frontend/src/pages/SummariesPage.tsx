@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useData, formatOccupant } from '../contexts/DataContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { FileText, CheckCircle, Clock, Edit3 } from 'lucide-react';
+import { FileText, CheckCircle, Clock, Edit3, AlertCircle } from 'lucide-react';
 
 export default function SummariesPage() {
   const { summaries, patients, refreshSummaries, deleteSummary } = useData();
@@ -34,7 +34,7 @@ export default function SummariesPage() {
       case 'Draft':
         return <Clock className="h-5 w-5 text-yellow-500" />;
       case 'Pending Review':
-        return <Edit3 className="h-5 w-5 text-blue-500" />;
+        return <Edit3 className="h-5 w-5" style={{ color: '#FF9D00' }} />;
       case 'Approved':
         return <CheckCircle className="h-5 w-5 text-green-500" />;
       default:
@@ -151,9 +151,9 @@ export default function SummariesPage() {
                           {getStatusIcon(summary.status)}
                           <span className={`text-sm font-medium ${
                             summary.status === 'Draft' ? 'text-yellow-600' :
-                            summary.status === 'Pending Review' ? 'text-blue-600' :
+                            summary.status === 'Pending Review' ? '' :
                             'text-green-600'
-                          }`}>
+                          }`} style={summary.status === 'Pending Review' ? { color: '#FF9D00' } : {}}>
                             {summary.status}
                           </span>
                         </div>

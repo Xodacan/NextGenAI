@@ -227,8 +227,8 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
               )}
               {summary?.status === 'Pending Review' && (
                 <>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm text-blue-600">Pending Review</span>
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#FF9D00' }}></div>
+                  <span className="text-sm" style={{ color: '#FF9D00' }}>Pending Review</span>
                 </>
               )}
               {summary?.status === 'Approved' && (
@@ -257,10 +257,10 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
                 <button
                   onClick={handleSave}
                   disabled={isSaving}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 inline-flex items-center"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 inline-flex items-center"
                 >
                   <img src="/src/assets/Icons_Buttons_SaveChanges.png" alt="Save" className="h-4 w-4 mr-2" />
-                  {isSaving ? 'Saving...' : 'Save Changes'}
+                  {isSaving ? 'Saving...' : 'Save'}
                 </button>
               )}
               
@@ -268,9 +268,9 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
                 <button
                   onClick={handleApprove}
                   disabled={isApproving}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
                 >
-                  {isApproving ? 'Finalizing...' : 'Approve & Finalize'}
+                  {isApproving ? 'Approving...' : 'Approve'}
                 </button>
               )}
             </>
@@ -279,7 +279,7 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
           {isCurrentlyEditing && (
             <button
               onClick={() => setIsEditing(false)}
-              className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors inline-flex items-center"
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors inline-flex items-center"
             >
               <img src="/src/assets/Icons_Buttons_CancelEdit.png" alt="Cancel" className="h-4 w-4 mr-2" />
               Cancel
@@ -332,9 +332,9 @@ export default function SummaryEditor({ summaryId, onBack }: SummaryEditorProps)
             <span className="font-medium text-gray-700">Status:</span>
             <p className={`font-medium ${
               summary.status === 'Draft' ? 'text-yellow-600' :
-              summary.status === 'Pending Review' ? 'text-blue-600' :
+              summary.status === 'Pending Review' ? '' :
               'text-green-600'
-            }`}>
+            }`} style={summary.status === 'Pending Review' ? { color: '#FF9D00' } : {}}>
               {summary.status}
             </p>
           </div>

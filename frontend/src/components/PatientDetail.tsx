@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { useData, formatOccupant } from '../contexts/DataContext';
-import { ArrowLeft, FileText, CheckCircle, AlertCircle, User, FolderOpen } from 'lucide-react';
+import { useData } from '../contexts/DataContext';
+import { ArrowLeft, FileText, CheckCircle, AlertCircle, User, FolderOpen, Edit2, Save, XCircle } from 'lucide-react';
 
 import DocumentUploadModal from './DocumentUploadModal';
 import DocumentViewerModal from './DocumentViewerModal';
-import HighlightedSummary from './HighlightedSummary';
+import ConfirmationModal from './ConfirmationModal';
+import SummaryEditorInline from './SummaryEditorInline';
 
 interface PatientDetailProps {
   patientId: string;
@@ -13,16 +14,44 @@ interface PatientDetailProps {
   initialTab?: 'details' | 'documents' | 'summary';
 }
 
-export default function PatientDetail({ patientId, onBack, onEditSummary }: PatientDetailProps) {
-  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, deleteSummary, updatePatient, isGeneratingSummary, generatingSummaryFor } = useData();
+export default function PatientDetail({ patientId, onBack, onEditSummary, initialTab = 'details' }: PatientDetailProps) {
+  const { patients, getPatientDocuments, getPatientSummary, generateSummary, deleteDocument, deleteSummaryDirect, updatePatient, isGeneratingSummary, generatingSummaryFor, showGlobalNotice } = useData();
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
   const [viewerDocIndex, setViewerDocIndex] = useState<number | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'documents' | 'summary'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'documents' | 'summary'>(initialTab);
   const [documentTypeFilter, setDocumentTypeFilter] = useState<string>('all');
-  const [dismissedGenerationPopup, setDismissedGenerationPopup] = useState(false);
+  
+  // Patient editing state
+  const [isEditingPatient, setIsEditingPatient] = useState(false);
+  const [editedPatient, setEditedPatient] = useState({
+    firstName: '',
+    lastName: '',
+    dateOfBirth: '',
+    admissionDate: '',
+    occupantType: 'Room' as 'Room' | 'Bed' | 'ER Patient',
+    occupantValue: '',
+    status: 'Active' as 'Active' | 'Pending Discharge' | 'Discharged'
+  });
+  const [isUpdatingPatient, setIsUpdatingPatient] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  
+
+  const [confirmationModal, setConfirmationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    isDestructive: boolean;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    isDestructive: false
+  });
 
   const patient = patients.find(p => p.id === patientId);
   const documents = getPatientDocuments(patientId);
@@ -31,12 +60,70 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
   // Check if we're generating a summary for this patient
   const isGeneratingForThisPatient = isGeneratingSummary && generatingSummaryFor === patientId;
 
-  // Reset dismissed state when generation starts
-  React.useEffect(() => {
-    if (isGeneratingForThisPatient) {
-      setDismissedGenerationPopup(false);
+
+
+  // Patient editing functions
+  const startEditingPatient = () => {
+    if (patient) {
+      setEditedPatient({
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        dateOfBirth: patient.dateOfBirth,
+        admissionDate: patient.admissionDate,
+        occupantType: patient.occupantType,
+        occupantValue: patient.occupantValue,
+        status: 'Active' // This won't be used since status is always editable
+      });
+      setIsEditingPatient(true);
     }
-  }, [isGeneratingForThisPatient]);
+  };
+
+  const cancelEditingPatient = () => {
+    setIsEditingPatient(false);
+    setEditedPatient({
+      firstName: '',
+      lastName: '',
+      dateOfBirth: '',
+      admissionDate: '',
+      occupantType: 'Room',
+      occupantValue: '',
+      status: 'Active'
+    });
+  };
+
+  const savePatientChanges = async () => {
+    if (!patient) return;
+    
+    setIsUpdatingPatient(true);
+    try {
+      await updatePatient(patient.id, editedPatient);
+      showGlobalNotice('success', 'Patient Updated', 'Patient details updated successfully', true);
+      setIsEditingPatient(false);
+    } catch (error) {
+      showGlobalNotice('error', 'Failed to Update Patient', `Failed to update patient: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
+    } finally {
+      setIsUpdatingPatient(false);
+    }
+  };
+
+  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!patient) return;
+    
+    const nextStatus = e.target.value as typeof patient.status;
+    if (nextStatus === patient.status) return;
+    
+    setIsUpdatingStatus(true);
+    try {
+      await updatePatient(patient.id, { status: nextStatus });
+      showGlobalNotice('success', 'Status Updated', 'Patient status updated successfully', true);
+    } catch (error) {
+      showGlobalNotice('error', 'Failed to Update Status', `Failed to update status: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+
 
   if (!patient) {
     return <div>Patient not found</div>;
@@ -65,18 +152,7 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
     }
   };
 
-  const handleStatusChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const nextStatus = e.target.value as typeof patient.status;
-    if (nextStatus === patient.status) return;
-    try {
-      setIsUpdatingStatus(true);
-      await updatePatient(patientId, { status: nextStatus });
-    } catch (err) {
-      console.error('Failed to update status', err);
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
+
 
   return (
     <div className="space-y-6">
@@ -89,10 +165,22 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
+            <div className="flex items-center space-x-3">
             <h2 className="text-2xl font-bold text-gray-900">
               {patient.firstName} {patient.lastName}
             </h2>
-            <p className="text-gray-600">{formatOccupant(patient)}</p>
+              <div className="flex items-center space-x-2">
+                <span className={`px-2 py-1 text-sm font-semibold rounded-md border ${
+                  patient.status === 'Active'
+                    ? 'bg-green-50 text-green-800 border-green-200'
+                    : patient.status === 'Pending Discharge'
+                    ? 'bg-yellow-50 text-yellow-800 border-yellow-200'
+                    : 'bg-gray-50 text-gray-800 border-gray-200'
+                }`}>
+                  {patient.status}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -125,25 +213,15 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                   </>
                 )}
               </button>
-              
-
             </div>
           ) : (
             <div className="flex items-center space-x-3">
               <button
-                onClick={() => onEditSummary(summary.id)}
+                onClick={() => setActiveTab('summary')}
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
-                {summary.status === 'Draft' ? 'Edit Summary' : 'View Summary'}
-              </button>
-              <button
-                onClick={() => deleteSummary(summary.id)}
-                className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                title="Delete summary"
-              >
-                <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4 mr-2" />
-                Delete
+                <img src="/src/assets/Icons_Actions_View.png" alt="View" className="h-4 w-4 mr-2" />
+                View Summary
               </button>
             </div>
           )}
@@ -177,12 +255,8 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
             <div className="flex items-center space-x-2">
               <FolderOpen className="h-4 w-4" />
               <span>Documents</span>
-              {isGeneratingForThisPatient && dismissedGenerationPopup && (
-                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" title="Generating summary in background"></div>
-              )}
             </div>
           </button>
-          {summary && (
             <button
               onClick={() => setActiveTab('summary')}
               className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
@@ -194,54 +268,21 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
               <div className="flex items-center space-x-2">
                 <FileText className="h-4 w-4" />
                 <span>Summary</span>
+              {summary && summary.status === 'Draft' && (
+                <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                  {summary.status}
+                </span>
+              )}
+              {summary && summary.status === 'Pending Review' && (
+                <span className="px-2 py-1 text-xs font-medium rounded-full" style={{ backgroundColor: '#FF9D00', color: 'white' }}>Pending Review</span>
+              )}
+              {summary && summary.status === 'Approved' && (
+                <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Approved</span>
+              )}
               </div>
             </button>
-          )}
         </nav>
       </div>
-
-      {/* Status Message Area */}
-      {isGeneratingForThisPatient && !dismissedGenerationPopup && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <div>
-                <h4 className="font-medium text-blue-900">OpenRoom is generating your discharge summary</h4>
-                <p className="text-sm text-blue-700">This may take a few moments as we analyze your clinical documents</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setDismissedGenerationPopup(true)}
-              className="text-blue-600 hover:text-blue-800 transition-colors"
-              title="Dismiss (generation will continue in background)"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex items-center space-x-2 text-sm text-blue-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>Processing clinical documents</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-blue-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>Analyzing medical content</span>
-            </div>
-            <div className="flex items-center space-x-2 text-sm text-blue-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              <span>Generating comprehensive summary</span>
-            </div>
-          </div>
-          
-          <div className="mt-3 text-xs text-blue-600">
-            💡 You can dismiss this notification and continue using other features while the summary generates in the background.
-          </div>
-        </div>
-      )}
 
       {/* Success/Error Message Area */}
       {showSuccessMessage && (
@@ -275,11 +316,11 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
         </div>
       )}
 
+
+
       {/* Tab Content */}
       {activeTab === 'details' && (
         <div className="space-y-6">
-
-
           {/* Alternative Discharge Summary Display */}
           {!summary && documents.some(doc => doc.documentType === 'Discharge Summary') && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -325,22 +366,144 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
             </div>
           )}
 
-          {/* Patient Information Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Patient Information</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Date of Birth</p>
-                    <p className="font-medium">{new Date(patient.dateOfBirth).toLocaleDateString()}</p>
+          {/* Personal Details Section */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Personal Details</h3>
+                <div className="flex items-center space-x-2">
+                  {!isEditingPatient ? (
+                    <button
+                      onClick={startEditingPatient}
+                      className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      <Edit2 className="h-4 w-4 mr-1" />
+                      Edit Details
+                    </button>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={savePatientChanges}
+                        disabled={isUpdatingPatient}
+                        className="inline-flex items-center px-3 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Save className="h-4 w-4 mr-1" />
+                        {isUpdatingPatient ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={cancelEditingPatient}
+                        disabled={isUpdatingPatient}
+                        className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {/* Name Fields */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">First Name</label>
+                  {isEditingPatient ? (
+                    <input
+                      type="text"
+                      value={editedPatient.firstName}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, firstName: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter first name"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium">{patient.firstName}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Last Name</label>
+                  {isEditingPatient ? (
+                    <input
+                      type="text"
+                      value={editedPatient.lastName}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, lastName: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="Enter last name"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium">{patient.lastName}</p>
+                  )}
+                </div>
+
+                {/* Date of Birth */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Date of Birth</label>
+                  {isEditingPatient ? (
+                    <input
+                      type="date"
+                      value={editedPatient.dateOfBirth}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium">{new Date(patient.dateOfBirth).toLocaleDateString()}</p>
+                  )}
+                </div>
+
+                {/* Admission Date */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Admission Date</label>
+                  {isEditingPatient ? (
+                    <input
+                      type="date"
+                      value={editedPatient.admissionDate}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, admissionDate: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
+                  )}
+                </div>
+
+                {/* Location Type */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Location Type</label>
+                  {isEditingPatient ? (
+                    <select
+                      value={editedPatient.occupantType}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, occupantType: e.target.value as 'Room' | 'Bed' | 'ER Patient' }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="Room">Room</option>
+                      <option value="Bed">Bed</option>
+                      <option value="ER Patient">ER Patient</option>
+                    </select>
+                  ) : (
+                    <p className="text-gray-900 font-medium">{patient.occupantType}</p>
+                  )}
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Admission Date</p>
-                    <p className="font-medium">{new Date(patient.admissionDate).toLocaleDateString()}</p>
+
+                {/* Location Value */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Location</label>
+                  {isEditingPatient ? (
+                    <input
+                      type="text"
+                      value={editedPatient.occupantValue}
+                      onChange={(e) => setEditedPatient(prev => ({ ...prev, occupantValue: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="e.g., A-204, B-156"
+                    />
+                  ) : (
+                    <p className="text-gray-900 font-medium">{patient.occupantValue}</p>
+                  )}
                   </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Status</p>
+
+                                {/* Status - Always Editable */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Status</label>
                     <div className="flex items-center space-x-3">
                       <select
                         value={patient.status}
@@ -349,7 +512,7 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                         className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                       >
                         <option value="Active">Active</option>
-                        <option value="Pending Discharge">Pending</option>
+                      <option value="Pending Discharge">Pending Discharge</option>
                         <option value="Discharged">Discharged</option>
                       </select>
                       <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
@@ -359,26 +522,15 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                           ? 'bg-yellow-100 text-yellow-800'
                           : 'bg-gray-100 text-gray-800'
                       }`}>
-                        {isUpdatingStatus ? 'Updating…' : patient.status}
+                      {isUpdatingStatus ? 'Updating...' : patient.status}
                       </span>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Additional Details</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm text-gray-500">Location</p>
-                    <p className="font-medium">{formatOccupant(patient)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Patient ID</p>
-                    <p className="font-medium font-mono text-sm">{patient.id}</p>
-                  </div>
+                {/* Patient ID (Read-only) */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-gray-700">Patient ID</label>
+                  <p className="text-gray-900 font-medium font-mono text-sm bg-gray-50 px-3 py-2 rounded-lg">{patient.id}</p>
                 </div>
               </div>
             </div>
@@ -388,90 +540,6 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
-          {/* Summary Section - Moved from Details tab */}
-          {summary && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
-                <div className="flex items-center space-x-2">
-                  {summary.status === 'Draft' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Draft" className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-yellow-600">Draft</span>
-                    </>
-                  )}
-                  {summary.status === 'Pending Review' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_PendingReview.png" alt="Pending Review" className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm text-blue-600">Pending Review</span>
-                    </>
-                  )}
-                  {summary.status === 'Approved' && (
-                    <>
-                      <img src="/src/assets/Icons_Buttons_SummaryComplete.png" alt="Approved" className="h-4 w-4 text-green-500" />
-                      <span className="text-sm text-green-600">Approved</span>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 p-4 rounded-lg">
-                <p className="text-sm text-gray-700 line-clamp-3">
-                  {summary.finalContent || summary.generatedContent}
-                </p>
-                <div className="mt-2 flex items-center justify-between">
-                  {summary.status !== 'Approved' ? (
-                    <button
-                      onClick={() => onEditSummary(summary.id)}
-                      className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      <img src="/src/assets/Icons_Buttons_Edit.png" alt="Edit" className="h-4 w-4 mr-2" />
-                      {summary.status === 'Pending Review' ? 'Continue Editing' : 'Edit Summary'}
-                    </button>
-                  ) : (
-                    <div className="text-sm text-gray-500">
-                      Summary finalized - view only
-                    </div>
-                  )}
-                  <button
-                    onClick={() => {
-                      setConfirmationModal({
-                        isOpen: true,
-                        title: 'Delete Discharge Summary',
-                        message: 'Are you sure you want to delete this discharge summary? This action cannot be undone.',
-                        onConfirm: async () => {
-                          setShowSuccessMessage(false);
-                          try {
-                            await deleteSummaryDirect(summary.id);
-                            setSuccessMessage('Discharge summary has been deleted successfully.');
-                            setShowSuccessMessage(true);
-                            setTimeout(() => setShowSuccessMessage(false), 5000);
-                          } catch (error) {
-                            setSuccessMessage(`Failed to delete summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                            setShowSuccessMessage(true);
-                            setTimeout(() => setShowSuccessMessage(false), 8000);
-                          }
-                        },
-                        isDestructive: true
-                      });
-                    }}
-                    className="inline-flex items-center px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-                    title="Delete summary"
-                  >
-                    <img src="/src/assets/Icons_Buttons_Trash.png" alt="Delete" className="h-4 w-4 mr-2" />
-                    Delete
-                  </button>
-                </div>
-              </div>
-              
-              {summary.approvalTimestamp && (
-                <div className="mt-3 text-xs text-gray-500">
-                  Approved on {new Date(summary.approvalTimestamp).toLocaleDateString()}
-                </div>
-              )}
-            </div>
-          )}
-          
           {/* Documents Section */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -542,7 +610,13 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                         View
                       </button>
                       <button
-                        onClick={() => deleteDocument(patientId, index)}
+                        onClick={() => deleteDocument(patientId, index, (type, message) => {
+                          if (type === 'success') {
+                            showGlobalNotice('success', 'Document Deleted', message, true);
+                          } else {
+                            showGlobalNotice('error', 'Failed to Delete Document', message, true);
+                          }
+                        })}
                         className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
                         title="Delete document"
                       >
@@ -550,117 +624,53 @@ export default function PatientDetail({ patientId, onBack, onEditSummary }: Pati
                       </button>
                     </div>
                   </div>
+                  ))}
                 </div>
-                <button
-                  onClick={() => setDismissedGenerationPopup(true)}
-                  className="text-blue-600 hover:text-blue-800 transition-colors"
-                  title="Dismiss (generation will continue in background)"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span>Processing clinical documents</span>
+              )}
                 </div>
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span>Analyzing medical content</span>
-                </div>
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span>Generating comprehensive summary</span>
-                </div>
-              </div>
-              
-              <div className="mt-3 text-xs text-blue-600">
-                💡 You can dismiss this notification and continue using other features while the summary generates in the background.
-              </div>
             </div>
           )}
 
-          {/* Discharge Summary Section */}
-          {!summary && documents.some(doc => doc.documentType === 'Discharge Summary') && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">Discharge Summary</h3>
-                <span className="text-sm text-gray-500">Generated Summary</span>
-              </div>
-              <div className="bg-gray-50 p-4 rounded-lg">
-                {(() => {
-                  const dischargeDoc = documents.find(doc => doc.documentType === 'Discharge Summary');
-                  if (dischargeDoc && dischargeDoc.summary) {
-                    return (
-                      <div>
-                        <p className="text-sm text-gray-700 line-clamp-3">
-                          {dischargeDoc.summary}
-                        </p>
-                        <div className="mt-2 flex items-center justify-between">
-                          <span className="text-sm text-gray-500">
-                            Generated on {new Date(dischargeDoc.uploadTimestamp).toLocaleDateString()}
-                          </span>
-                          <button
-                            onClick={() => {
-                              const dischargeDocIndex = documents.findIndex(doc => doc.documentType === 'Discharge Summary');
-                              if (dischargeDocIndex !== -1) {
-                                setViewerDocIndex(dischargeDocIndex);
-                              }
-                            }}
-                            className="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-                          >
-                            View Full Summary →
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <p className="text-sm text-gray-500">
-                      Discharge summary document found but content not available
-                    </p>
-                  );
-                })()}
-              </div>
-            </div>
-          )}
-
-          {/* Highlighted Summary - Only show if summary exists */}
-          {summary && (
-          <HighlightedSummary
-            highlightedSummary={summary.highlighted_summary || summary.generatedContent}
-            sourceUsage={summary.source_usage || {}}
-            sourceAttributions={summary.source_attributions}
-            totalCharacters={summary.total_characters || summary.generatedContent.length}
-          />
-          )}
-
-          {/* No Summary Message */}
-          {!summary && !documents.some(doc => doc.documentType === 'Discharge Summary') && !isGeneratingForThisPatient && (
+      {activeTab === 'summary' && (
+        <div className="h-full flex flex-col">
+          {summary ? (
+            <SummaryEditorInline
+              summary={summary}
+              patientId={patientId}
+              onDeleteSummary={(summaryId) => {
+                setConfirmationModal({
+                  isOpen: true,
+                  title: 'Delete Discharge Summary',
+                  message: 'Are you sure you want to delete this discharge summary? This action cannot be undone.',
+                  onConfirm: async () => {
+                    try {
+                      await deleteSummaryDirect(summaryId);
+                      showGlobalNotice('success', 'Summary Deleted', 'Discharge summary has been deleted successfully', true);
+                    } catch (error) {
+                      showGlobalNotice('error', 'Failed to Delete Summary', `Failed to delete summary: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
+                    }
+                  },
+                  isDestructive: true
+                });
+              }}
+            />
+          ) : (
+            /* No Summary Available */
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
               <div className="text-gray-500">
                 <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No Discharge Summary Available</h3>
-                <p className="text-sm text-gray-600">
-                  Generate a discharge summary from the Documents tab to see it here.
+                <p className="text-sm text-gray-600 mb-4">
+                  Use the "Generate Summary" button in the main summary section to create a discharge summary from your clinical documents.
                 </p>
+                {documents.length === 0 && (
+                  <p className="text-sm text-gray-500">
+                    Upload clinical documents first to enable summary generation.
+                  </p>
+                )}
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {activeTab === 'summary' && summary && (
-        <div className="space-y-6">
-          <HighlightedSummary
-            highlightedSummary={summary.highlighted_summary || summary.generatedContent}
-            sourceUsage={summary.source_usage || {}}
-            sourceAttributions={summary.source_attributions}
-            totalCharacters={summary.total_characters || summary.generatedContent.length}
-          />
         </div>
       )}
 

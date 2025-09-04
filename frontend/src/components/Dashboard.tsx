@@ -1,14 +1,14 @@
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useData, formatOccupant } from '../contexts/DataContext';
-import { Users, FileText, ClipboardList, Activity, TrendingUp, Settings, Building2, MapPin, Phone } from 'lucide-react';
+import { Users, TrendingUp, Settings, Clock, CheckCircle, AlertCircle, BarChart3, Building2, MapPin, Phone, Calendar } from 'lucide-react';
 import UserSettings from './UserSettings';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, institution } = useAuth();
+  const { institution } = useAuth();
   const { patients, documents, summaries } = useData();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
@@ -54,39 +54,53 @@ export default function Dashboard() {
     { id: 'sd3', fileName: 'chest_xray.jpg', documentType: 'Radiology Report', uploadTimestamp: new Date().toISOString() },
   ];
 
+  // Calculate useful statistics
+  const totalPatients = hasAnyData ? patients.length : 24;
+  const activePatients = hasAnyData ? patients.filter(p => p.status === 'Active').length : 12;
+  const pendingDischargePatients = hasAnyData ? patients.filter(p => p.status === 'Pending Discharge').length : 8;
+  
+  const totalDocuments = hasAnyData ? documents.length : 58;
+  const pendingSummaries = hasAnyData ? summaries.filter(s => s.status === 'Draft').length : 4;
+  const pendingReviewSummaries = hasAnyData ? summaries.filter(s => s.status === 'Pending Review').length : 3;
+  const approvedSummaries = hasAnyData ? summaries.filter(s => s.status === 'Approved').length : 9;
+  
   const stats = [
     {
-      title: 'Total Patients',
-      value: hasAnyData ? patients.length : 24,
+      title: 'Active Patients',
+      value: activePatients,
       icon: Users,
-      color: 'bg-blue-500',
+      color: 'bg-green-500',
       change: '+12%',
       changeType: 'positive',
-      onClick: () => navigate('/patients')
+      onClick: () => navigate('/patients'),
+      description: 'Currently under care'
     },
     {
-      title: 'Active Documents',
-      value: hasAnyData ? documents.length : 58,
-      icon: FileText,
-      color: 'bg-green-500',
-      change: '+8%',
-      changeType: 'positive'
-    },
-    {
-      title: 'Pending Summaries',
-      value: hasAnyData ? summaries.filter(s => s.status === 'Draft').length : 4,
-      icon: ClipboardList,
+      title: 'Pending Discharge',
+      value: pendingDischargePatients,
+      icon: Clock,
       color: 'bg-yellow-500',
-      change: '+5%',
-      changeType: 'positive'
+      change: '+8%',
+      changeType: 'positive',
+      description: 'Ready for discharge'
     },
     {
-      title: 'Approved Summaries',
-      value: hasAnyData ? summaries.filter(s => s.status === 'Approved').length : 9,
-      icon: Activity,
-      color: 'bg-purple-500',
+      title: 'Pending Review',
+      value: pendingReviewSummaries,
+      icon: AlertCircle,
+      color: 'bg-orange-500',
+      change: '+5%',
+      changeType: 'positive',
+      description: 'Summaries awaiting approval'
+    },
+    {
+      title: 'Completed This Month',
+      value: approvedSummaries,
+      icon: CheckCircle,
+      color: 'bg-blue-500',
       change: '+15%',
-      changeType: 'positive'
+      changeType: 'positive',
+      description: 'Approved summaries'
     }
   ];
 
@@ -100,7 +114,6 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-600 mt-2">
             Here's what's happening with your patients today
-            {institution && <span className="text-blue-600"> at {institution.name}</span>}.
           </p>
         </div>
         
@@ -114,9 +127,70 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Institution Overview Card */}
+      {/* Stats Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {stats.map((stat, index) => {
+          const Icon = stat.icon;
+          return (
+            <div 
+              key={index} 
+              className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${stat.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+              onClick={stat.onClick}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">{stat.title}</p>
+                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                </div>
+                <div className={`${stat.color} p-3 rounded-lg`}>
+                  <Icon className="h-6 w-6 text-white" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs text-gray-500">{stat.description}</p>
+                <div className="flex items-center">
+                  <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
+                  <span className="text-sm text-green-600">{stat.change}</span>
+                  <span className="text-sm text-gray-500 ml-1">from last month</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Summary Overview Section */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-gray-900">Summary Overview</h2>
+          <BarChart3 className="h-5 w-5 text-gray-400" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="text-center p-4 bg-gray-50 rounded-lg">
+            <div className="text-2xl font-bold text-gray-900">{totalDocuments}</div>
+            <div className="text-sm text-gray-600">Total Documents</div>
+            <div className="text-xs text-gray-500 mt-1">Clinical records processed</div>
+          </div>
+          <div className="text-center p-4 bg-gray-50 rounded-lg">
+            <div className="text-2xl font-bold text-gray-900">{pendingSummaries}</div>
+            <div className="text-sm text-gray-600">Draft Summaries</div>
+            <div className="text-xs text-gray-500 mt-1">Awaiting completion</div>
+          </div>
+          <div className="text-center p-4 bg-gray-50 rounded-lg">
+            <div className="text-2xl font-bold text-gray-900">{totalPatients}</div>
+            <div className="text-sm text-gray-600">Total Patients</div>
+            <div className="text-xs text-gray-500 mt-1">All time patients</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Institution Section */}
       {institution && (
         <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Institution Information</h2>
+            <Building2 className="h-5 w-5 text-blue-600" />
+          </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               {institution.logo ? (
@@ -131,68 +205,51 @@ export default function Dashboard() {
                 </div>
               )}
               <div>
-                <h2 className="text-xl font-bold text-gray-900">{institution.name}</h2>
+                <h3 className="text-xl font-bold text-gray-900">{institution.name}</h3>
                 <p className="text-blue-600 font-medium">{institution.type}</p>
                 <div className="flex items-center space-x-4 mt-2 text-sm text-gray-600">
                   <div className="flex items-center space-x-1">
                     <MapPin className="h-4 w-4" />
-                    <span>{institution.address.split(',')[0]}</span>
+                    <span>{institution.address?.split(',')[0] || 'Address not available'}</span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Phone className="h-4 w-4" />
-                    <span>{institution.phone}</span>
+                    <span>{institution.phone || 'Phone not available'}</span>
                   </div>
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-500">Established</p>
-              <p className="text-2xl font-bold text-blue-600">{institution.established}</p>
+              <div className="flex items-center space-x-2 text-sm text-gray-500 mb-1">
+                <Calendar className="h-4 w-4" />
+                <span>Established</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-600">{institution.established || 'N/A'}</p>
             </div>
           </div>
         </div>
       )}
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <div 
-              key={index} 
-              className={`bg-white rounded-lg shadow-sm border border-gray-200 p-6 ${stat.onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-              onClick={stat.onClick}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                </div>
-                <div className={`${stat.color} p-3 rounded-lg`}>
-                  <Icon className="h-6 w-6 text-white" />
-                </div>
-              </div>
-              <div className="mt-4 flex items-center">
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                <span className="text-sm text-green-600">{stat.change}</span>
-                <span className="text-sm text-gray-500 ml-1">from last month</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Patients */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Patients</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Recent Patients</h2>
+            <button 
+              onClick={() => navigate('/patients')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View All
+            </button>
+          </div>
           {!hasAnyData && (
             <p className="text-sm text-gray-500 mb-3">Sample data shown. Add a patient to get started.</p>
           )}
           <div className="space-y-4">
             {recentPatients.map(patient => (
-              <div key={patient.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div key={patient.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                   onClick={() => navigate(`/patients/${patient.id}`)}>
                 <div>
                   <p className="font-medium text-gray-900">{patient.firstName} {patient.lastName}</p>
                   <p className="text-sm text-gray-600">{formatOccupant(patient)}</p>
@@ -211,7 +268,15 @@ export default function Dashboard() {
 
         {/* Recent Documents */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Documents</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Recent Documents</h2>
+            <button 
+              onClick={() => navigate('/documents')}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              View All
+            </button>
+          </div>
           {!hasAnyData && (
             <p className="text-sm text-gray-500 mb-3">Sample data shown. Upload a document to see it here.</p>
           )}

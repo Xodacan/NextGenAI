@@ -146,8 +146,8 @@ export default function DocumentManagement({ patientId, highlightSummaryId }: Do
               )}
               {patientSummary.status === 'Pending Review' && (
                 <>
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-sm text-blue-600">Pending Review</span>
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#FF9D00' }}></div>
+                  <span className="text-sm" style={{ color: '#FF9D00' }}>Pending Review</span>
                 </>
               )}
               {patientSummary.status === 'Approved' && (

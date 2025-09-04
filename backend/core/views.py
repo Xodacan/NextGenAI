@@ -1,7 +1,8 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework import status, permissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework import generics
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
@@ -731,5 +732,75 @@ class UpdateSummaryView(APIView):
         except Exception as e:
             return Response({
                 'detail': 'Error updating summary.',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class DeleteSummaryView(APIView):
+    """
+    Delete a discharge summary for a patient
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def delete(self, request, pk):
+        try:
+            patient = get_object_or_404(Patient, pk=pk)
+            
+            # Find the discharge summary document
+            summary_doc = None
+            summary_index = None
+            
+            docs = patient.documents or []
+            for i, doc in enumerate(docs):
+                if doc.get('documentType') == 'Discharge Summary':
+                    summary_doc = doc
+                    summary_index = i
+                    break
+            
+            if not summary_doc:
+                return Response({
+                    'detail': 'No discharge summary found for this patient.'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Delete the summary file from OSS if it exists
+            if summary_doc.get('oss_path'):
+                try:
+                    from alibaba_cloud.services.oss_service import OSSService
+                    oss_service = OSSService()
+                    if oss_service.delete_document(summary_doc['oss_path']):
+                        print(f"Successfully deleted summary file from OSS: {summary_doc['oss_path']}")
+                    else:
+                        print(f"Warning: Could not delete summary file from OSS: {summary_doc['oss_path']}")
+                except Exception as e:
+                    print(f"Warning: Could not delete summary file from OSS: {e}")
+            
+            # Delete the summary file locally if it exists
+            if summary_doc.get('url') and summary_doc['url'].startswith('/media/'):
+                try:
+                    url_path = summary_doc['url']
+                    file_path = url_path.replace('/media/', '')
+                    full_path = os.path.join(settings.MEDIA_ROOT, file_path)
+                    
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                        print(f"Successfully deleted summary file locally: {full_path}")
+                except Exception as e:
+                    print(f"Warning: Could not delete summary file locally: {e}")
+            
+            # Remove the summary document from the patient's documents
+            docs.pop(summary_index)
+            patient.documents = docs
+            patient.save()
+            
+            return Response({
+                'message': 'Discharge summary deleted successfully'
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            print(f"❌ Error deleting summary for patient {pk}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'detail': 'Error deleting summary.',
                 'error': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -45,7 +45,6 @@ INSTALLED_APPS = [
     'core',
     'firebase_auth',
     'alibaba_cloud',
-    'openai_integration',
 ]
 
 MIDDLEWARE = [

@@ -2,11 +2,13 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Users, ClipboardList, Home, LogOut } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useData } from '../contexts/DataContext';
 import OpenRoomLogo from '../assets/OpenRoomLogo.png';
 
 export default function Navigation() {
   const location = useLocation();
   const { user, institution, logout } = useAuth();
+  const { globalNotice } = useData();
 
   const menuItems = [
     { path: '/dashboard', label: 'Dashboard', icon: Home },
@@ -27,38 +29,7 @@ export default function Navigation() {
         <img src={OpenRoomLogo} alt="OpenRoomAI" className="h-8" />
         <p className="text-sm text-gray-600">Healthcare Management</p>
         
-        {/* Institution Information */}
-        {institution && (
-          <div className="mt-6 pt-4 border-t border-gray-100">
-            <div className="flex items-center space-x-3 mb-3">
-              {institution.logo ? (
-                <img 
-                  src={institution.logo} 
-                  alt={institution.name}
-                  className="h-10 w-10 rounded-lg object-cover"
-                />
-              ) : (
-                <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-blue-600" />
-                </div>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{institution.name}</p>
-                <p className="text-xs text-gray-500">{institution.type}</p>
-              </div>
-            </div>
-            
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <p className="text-xs text-blue-800 font-medium mb-1">Your Institution</p>
-              <p className="text-xs text-blue-600">
-                Est. {institution.established || 'N/A'}
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                {institution.phone}
-              </p>
-            </div>
-          </div>
-        )}
+
         
         {/* Welcome Message */}
         <div className="mt-4 pt-4 border-t border-gray-100">
@@ -106,6 +77,55 @@ export default function Navigation() {
           <LogOut className="h-5 w-5 text-gray-400" />
           <span className="font-medium">Logout</span>
         </button>
+        
+        {/* Global Notifications Area */}
+        {globalNotice.isVisible && (
+          <div className="mt-4 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
+            <div className="flex items-start space-x-2">
+              <div className="flex-shrink-0 mt-0.5">
+                {globalNotice.type === 'success' && (
+                  <div className="w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                {globalNotice.type === 'success-blue' && (
+                  <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                {globalNotice.type === 'error' && (
+                  <div className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                {globalNotice.type === 'info' && (
+                  <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                )}
+                {globalNotice.type === 'loading' && (
+                  <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-semibold text-gray-900 leading-tight">
+                  {globalNotice.title}
+                </h4>
+                <p className="text-sm text-gray-600 mt-1 leading-relaxed break-words">
+                  {globalNotice.message}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );

@@ -12,4 +12,5 @@ urlpatterns = [
     path('patients/<int:pk>/documents/<int:document_index>/content/', views.DocumentContentView.as_view(), name='document_content'),
     path('patients/<int:pk>/generate-summary/', views.GenerateSummaryView.as_view(), name='generate_summary'),
     path('patients/<int:pk>/update-summary/', views.UpdateSummaryView.as_view(), name='update_summary'),
+    path('patients/<int:pk>/delete-summary/', views.DeleteSummaryView.as_view(), name='delete_summary'),
 ] 

@@ -8,7 +8,7 @@ interface PatientListProps {
 }
 
 export default function PatientList({ onSelectPatient }: PatientListProps) {
-  const { patients, deletePatient } = useData();
+  const { patients, deletePatient, getPatientSummary } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -32,6 +32,18 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
       alert(`Failed to delete patient: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setDeletingPatientId(null);
+    }
+  };
+
+  // Helper function to get summary status for a patient
+  const getSummaryStatus = (patientId: string) => {
+    const summary = getPatientSummary(patientId);
+    if (!summary) return null;
+    
+    if (summary.status === 'Approved') {
+      return { hasSummary: true, isApproved: true };
+    } else {
+      return { hasSummary: true, isApproved: false };
     }
   };
 
@@ -98,15 +110,30 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {filteredPatients.map(patient => (
-                <tr key={patient.id} className="hover:bg-gray-50">
+                <tr 
+                  key={patient.id} 
+                  className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  onClick={() => onSelectPatient(patient.id)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
+                    <div className="flex items-center space-x-2">
                       <div className="text-sm font-medium text-gray-900">
                         {patient.firstName} {patient.lastName}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        DOB: {new Date(patient.dateOfBirth).toLocaleDateString()}
-                      </div>
+                      {(() => {
+                        const summaryStatus = getSummaryStatus(patient.id);
+                        if (summaryStatus?.hasSummary) {
+                          return (
+                            <div className="flex items-center space-x-1">
+                              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                              {summaryStatus.isApproved && (
+                                <span className="text-xs text-blue-600 font-medium">Approved</span>
+                              )}
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -129,14 +156,20 @@ export default function PatientList({ onSelectPatient }: PatientListProps) {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-3">
                       <button
-                        onClick={() => onSelectPatient(patient.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectPatient(patient.id);
+                        }}
                         className="text-blue-600 hover:text-blue-900 inline-flex items-center"
                       >
                         <img src="/src/assets/Icons_Actions_View.png" alt="View" className="h-4 w-4 mr-1" />
                         View Details
                       </button>
                       <button
-                        onClick={() => handleDeletePatient(patient.id, `${patient.firstName} ${patient.lastName}`)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeletePatient(patient.id, `${patient.firstName} ${patient.lastName}`);
+                        }}
                         disabled={deletingPatientId === patient.id}
                         className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center"
                         title="Delete patient"

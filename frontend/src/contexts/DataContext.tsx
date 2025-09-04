@@ -3,6 +3,7 @@ import { getIdToken } from '../firebase/auth';
 import { useAuth } from './AuthContext';
 import ConfirmationModal from '../components/ConfirmationModal';
 
+
 export interface Patient {
   id: string;
   doctor_firebase_uid?: string;
@@ -73,13 +74,23 @@ interface DataContextType {
   updatePatient: (id: string, updates: Partial<Patient>) => Promise<void>;
   deletePatient: (patientId: string) => Promise<void>;
   addDocument: (document: Omit<ClinicalDocument, 'id' | 'uploadTimestamp'>) => Promise<void>;
-  deleteDocument: (patientId: string, documentIndex: number) => void;
+  deleteDocument: (patientId: string, documentIndex: number, onNotice?: (type: 'success' | 'error', message: string) => void) => void;
   generateSummary: (patientId: string) => Promise<string>;
   updateSummary: (id: string, updates: Partial<DischargeSummary>) => Promise<void>;
   deleteSummary: (summaryId: string) => Promise<void>;
   deleteSummaryDirect: (summaryId: string) => Promise<void>;
   refreshPatients: () => Promise<void>;
   refreshSummaries: () => Promise<void>;
+  // Global notice functions
+  globalNotice: {
+    isVisible: boolean;
+    type: 'success' | 'success-blue' | 'error' | 'info' | 'loading';
+    title: string;
+    message: string;
+    autoHide: boolean;
+  };
+  showGlobalNotice: (type: 'success' | 'success-blue' | 'error' | 'info' | 'loading', title: string, message: string, autoHide?: boolean) => void;
+  hideGlobalNotice: () => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -91,6 +102,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [generatingSummaryFor, setGeneratingSummaryFor] = useState<string | null>(null);
+  
+  // Global notice state
+  const [globalNotice, setGlobalNotice] = useState<{
+    isVisible: boolean;
+    type: 'success' | 'success-blue' | 'error' | 'info' | 'loading';
+    title: string;
+    message: string;
+    autoHide: boolean;
+  }>({
+    isVisible: false,
+    type: 'info',
+    title: '',
+    message: '',
+    autoHide: true
+  });
   
   // Confirmation modal state
   const [confirmationModal, setConfirmationModal] = useState<{
@@ -224,7 +250,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const addPatient = async (patient: Omit<Patient, 'id'>) => {
     const token = await getIdToken();
-    if (!token) return;
+    if (!token) {
+      showGlobalNotice('error', 'Authentication Error', 'Failed to add patient: No authentication token', true);
+      return;
+    }
     
     const payload = {
       doctor_firebase_uid: user!.id, // Use the logged-in doctor's Firebase UID
@@ -259,6 +288,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         status: p.status,
       };
       setPatients(prev => [...prev, newPatient]);
+      
+      // Show success notice
+      showGlobalNotice('success', 'Patient Added', `${newPatient.firstName} ${newPatient.lastName} has been added successfully`, true);
+    } else {
+      // Handle error response
+      const errorData = await res.json().catch(() => ({ detail: 'Unknown error' }));
+      showGlobalNotice('error', 'Failed to Add Patient', `Failed to add ${patient.firstName} ${patient.lastName}: ${errorData.detail || 'Unknown error'}`, true);
     }
   };
 
@@ -336,7 +372,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const deleteDocument = async (patientId: string, docIndex: number) => {
+  const deleteDocument = async (patientId: string, docIndex: number, onNotice?: (type: 'success' | 'error', message: string) => void) => {
     try {
       console.log(`🗑️  Attempting to delete document ${docIndex} from patient ${patientId}`);
       
@@ -365,7 +401,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         isOpen: true,
         title: confirmTitle,
         message: confirmMessage,
-        onConfirm: () => performDocumentDeletion(patientId, docIndex, documentToDelete, isDischargeSummary),
+        onConfirm: () => performDocumentDeletion(patientId, docIndex, documentToDelete, isDischargeSummary, onNotice),
         isDestructive: true
       });
       
@@ -379,7 +415,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     patientId: string, 
     docIndex: number, 
     documentToDelete: ClinicalDocument | undefined, 
-    isDischargeSummary: boolean
+    isDischargeSummary: boolean,
+    onNotice?: (type: 'success' | 'error', message: string) => void
   ) => {
     try {
       console.log('✅ User confirmed document deletion, proceeding...');
@@ -451,18 +488,37 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         }
         
         console.log('✅ Documents state updated successfully');
+        
+        // Show success notice if callback provided
+        if (onNotice && documentToDelete) {
+          onNotice('success', `${documentToDelete.fileName} has been deleted successfully`);
+        }
       } else {
         const errorText = await res.text();
         console.error(`❌ Delete failed: ${res.status} ${res.statusText}`);
         console.error(`❌ Error details: ${errorText}`);
+        
+        // Show error notice if callback provided
+        if (onNotice) {
+          onNotice('error', `Failed to delete document: ${res.statusText}`);
+        }
       }
     } catch (error) {
       console.error('❌ Error in performDocumentDeletion:', error);
+      
+      // Show error notice if callback provided
+      if (onNotice) {
+        onNotice('error', `Failed to delete document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   };
 
   const generateSummary = async (patientId: string): Promise<string> => {
     if (!user) throw new Error('User not authenticated');
+    
+    // Get patient information for notifications
+    const patient = patients.find(p => p.id === patientId);
+    const patientName = patient ? `${patient.firstName} ${patient.lastName}` : 'Unknown Patient';
     
     // Check if a summary already exists for this patient
     const existingSummary = getPatientSummary(patientId);
@@ -542,11 +598,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     console.log('🔍 Creating new summary with source_usage:', newSummary.source_usage);
 
     setSummaries(prev => [...prev, newSummary]);
+    
+    // Show success notice
+    showGlobalNotice('success-blue', 'Summary Generated', `Discharge summary created successfully for ${patientName}`, true);
       
     return newSummary.id;
       
     } catch (error) {
       console.error('Error generating summary:', error);
+      // Show error notice
+      showGlobalNotice('error', 'Generation Failed', `Failed to generate summary for ${patientName}: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
       throw error;
     } finally {
       // Clear global loading state
@@ -688,6 +749,51 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteSummaryDirect = async (summaryId: string) => {
+    try {
+      const summary = summaries.find(s => s.id === summaryId);
+      if (!summary) return;
+
+      console.log('Directly deleting summary:', {
+        id: summaryId,
+        patientId: summary.patientId,
+        status: summary.status
+      });
+      
+      // Make API call to delete summary from backend
+      const token = await getIdToken();
+      if (!token) {
+        throw new Error('No authentication token available');
+      }
+      
+      const response = await fetch(`http://localhost:8000/api/patients/${summary.patientId}/delete-summary/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete summary');
+      }
+      
+      // Remove from summaries state
+      setSummaries(prev => prev.filter(s => s.id !== summaryId));
+
+      // Remove the corresponding document from documents state
+      setDocuments(prev => prev.filter(doc => 
+        !(doc.patientId === summary.patientId && doc.documentType === 'Discharge Summary')
+      ));
+
+      console.log(`Summary ${summaryId} deleted successfully`);
+    } catch (error) {
+      console.error('Error in deleteSummaryDirect:', error);
+      throw error;
+    }
+  };
+
   const performSummaryDeletion = async (summaryId: string, summary: DischargeSummary) => {
     try {
       console.log('✅ User confirmed summary deletion, proceeding...');
@@ -774,8 +880,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`Patient ${patientId} deleted successfully`);
       
+      // Show success notice
+      showGlobalNotice('success', 'Patient Deleted', `${patientName} has been deleted successfully`, true);
+      
     } catch (error) {
       console.error('Error in performPatientDeletion:', error);
+      // Show error notice
+      showGlobalNotice('error', 'Failed to Delete Patient', `Failed to delete ${patientName}: ${error instanceof Error ? error.message : 'Unknown error'}`, true);
       throw error;
     }
   };
@@ -977,6 +1088,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Global notice functions
+  const showGlobalNotice = (type: 'success' | 'success-blue' | 'error' | 'info' | 'loading', title: string, message: string, autoHide: boolean = true) => {
+    // Hide any existing notification first
+    setGlobalNotice(prev => ({ ...prev, isVisible: false }));
+    
+    // Set the new notification
+    setGlobalNotice({
+      isVisible: true,
+      type,
+      title,
+      message,
+      autoHide
+    });
+    
+    // Auto-hide after 2 seconds if autoHide is true
+    if (autoHide) {
+      setTimeout(() => {
+        setGlobalNotice(prev => ({ ...prev, isVisible: false }));
+      }, 2000);
+    }
+  };
+
+  const hideGlobalNotice = () => {
+    setGlobalNotice(prev => ({ ...prev, isVisible: false }));
+  };
+
   return (
     <DataContext.Provider value={{
       patients,
@@ -997,7 +1134,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       getPatientDocuments,
       getPatientSummary,
       refreshPatients,
-      refreshSummaries
+      refreshSummaries,
+      globalNotice,
+      showGlobalNotice,
+      hideGlobalNotice
     }}>
       {children}
       <ConfirmationModal
